@@ -1,0 +1,217 @@
+package query
+
+import (
+	f "github.com/core-go/firestore"
+	"github.com/core-go/search"
+	"log"
+	"reflect"
+	"strings"
+)
+
+type Builder struct {
+	ModelType reflect.Type
+}
+
+func NewBuilder(resultModelType reflect.Type) *Builder {
+	return &Builder{ModelType: resultModelType}
+}
+func (b *Builder) BuildQuery(sm interface{}) ([]f.Query, []string) {
+	return BuildQueryByType(sm, b.ModelType)
+}
+
+func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, []string) {
+	var query = make([]f.Query, 0)
+	fields := make([]string, 0)
+
+	if _, ok := sm.(*search.SearchModel); ok {
+		return query, fields
+	}
+
+	value := reflect.Indirect(reflect.ValueOf(sm))
+	numField := value.NumField()
+	var keyword string
+	keywordFormat := map[string]string{
+		"prefix":  "==",
+		"contain": "==",
+		"equal":   "==",
+	}
+
+	for i := 0; i < numField; i++ {
+		field := value.Field(i)
+		kind := field.Kind()
+		skind := kind.String()
+		x := field.Interface()
+		if v, ok := x.(*search.SearchModel); ok {
+			if len(v.Fields) > 0 {
+				for _, key := range v.Fields {
+					i, _, columnName := getFieldByJson(resultModelType, key)
+					if len(columnName) < 0 {
+						fields = fields[len(fields):]
+						break
+					} else if i == -1 {
+						columnName = key
+					}
+					fields = append(fields, columnName)
+				}
+			}
+			if len(v.Keyword) > 0 {
+				keyword = strings.TrimSpace(v.Keyword)
+			}
+			continue
+		} else if skind == "string" {
+			var keywordQuery f.Query
+			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
+			var operator string
+			var searchValue interface{}
+			if field.Len() > 0 {
+				const defaultKey = "contain"
+				if key, ok := value.Type().Field(i).Tag.Lookup("match"); ok {
+					if format, exist := keywordFormat[key]; exist {
+						operator = format
+					} else {
+						log.Panicf("match not support \"%v\" format\n", key)
+					}
+				} else if format, exist := keywordFormat[defaultKey]; exist {
+					operator = format
+				}
+				searchValue = field.Interface()
+			} else if len(keyword) > 0 {
+				if key, ok := value.Type().Field(i).Tag.Lookup("keyword"); ok {
+					if format, exist := keywordFormat[key]; exist {
+						operator = format
+					} else {
+						log.Panicf("keyword not support \"%v\" format\n", key)
+					}
+				}
+				searchValue = keyword
+			}
+			if len(columnName) > 0 && len(operator) > 0 {
+				keywordQuery = f.Query{Key: columnName, Operator: operator, Value: searchValue}
+				query = append(query, keywordQuery)
+			}
+		} else if rangeTime, ok := x.(*search.TimeRange); ok && rangeTime != nil {
+			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
+			actionTimeQuery := make([]f.Query, 0)
+			if rangeTime.StartTime == nil {
+				actionTimeQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeTime.EndTime}}
+			} else if rangeTime.EndTime == nil {
+				actionTimeQuery = []f.Query{{Key: columnName, Operator: ">=", Value: rangeTime.StartTime}}
+			} else {
+				actionTimeQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeTime.EndTime}, {Key: columnName, Operator: ">=", Value: rangeTime.StartTime}}
+			}
+			query = append(query, actionTimeQuery...)
+		} else if rangeTime, ok := x.(search.TimeRange); ok {
+			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
+			actionTimeQuery := make([]f.Query, 0)
+			if rangeTime.StartTime == nil {
+				actionTimeQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeTime.EndTime}}
+			} else if rangeTime.EndTime == nil {
+				actionTimeQuery = []f.Query{{Key: columnName, Operator: ">=", Value: rangeTime.StartTime}}
+			} else {
+				actionTimeQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeTime.EndTime}, {Key: columnName, Operator: ">=", Value: rangeTime.StartTime}}
+			}
+			query = append(query, actionTimeQuery...)
+		} else if rangeDate, ok := x.(*search.DateRange); ok && rangeDate != nil {
+			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
+			actionDateQuery := make([]f.Query, 0)
+			if rangeDate.StartDate == nil && rangeDate.EndDate == nil {
+				continue
+			} else if rangeDate.StartDate == nil {
+				actionDateQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeDate.EndDate}}
+			} else if rangeDate.EndDate == nil {
+				actionDateQuery = []f.Query{{Key: columnName, Operator: ">=", Value: rangeDate.StartDate}}
+			} else {
+				actionDateQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeDate.EndDate}, {Key: columnName, Operator: ">=", Value: rangeDate.StartDate}}
+			}
+			query = append(query, actionDateQuery...)
+		} else if rangeDate, ok := x.(search.DateRange); ok {
+			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
+			actionDateQuery := make([]f.Query, 0)
+			if rangeDate.StartDate == nil && rangeDate.EndDate == nil {
+				continue
+			} else if rangeDate.StartDate == nil {
+				actionDateQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeDate.EndDate}}
+			} else if rangeDate.EndDate == nil {
+				actionDateQuery = []f.Query{{Key: columnName, Operator: ">=", Value: rangeDate.StartDate}}
+			} else {
+				actionDateQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeDate.EndDate}, {Key: columnName, Operator: ">=", Value: rangeDate.StartDate}}
+			}
+			query = append(query, actionDateQuery...)
+		} else if numberRange, ok := x.(*search.NumberRange); ok && numberRange != nil {
+			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
+			amountQuery := make([]f.Query, 0)
+
+			if numberRange.Min != nil {
+				amountQuery = append(amountQuery, f.Query{Key: columnName, Operator: ">=", Value: *numberRange.Min})
+			} else if numberRange.Lower != nil {
+				amountQuery = append(amountQuery, f.Query{Key: columnName, Operator: ">", Value: *numberRange.Lower})
+			}
+			if numberRange.Max != nil {
+				amountQuery = append(amountQuery, f.Query{Key: columnName, Operator: "<=", Value: *numberRange.Max})
+			} else if numberRange.Upper != nil {
+				amountQuery = append(amountQuery, f.Query{Key: columnName, Operator: "<", Value: *numberRange.Upper})
+			}
+
+			if len(amountQuery) > 0 {
+				query = append(query, amountQuery...)
+			}
+		} else if numberRange, ok := x.(search.NumberRange); ok {
+			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
+			amountQuery := make([]f.Query, 0)
+
+			if numberRange.Min != nil {
+				amountQuery = append(amountQuery, f.Query{Key: columnName, Operator: ">=", Value: *numberRange.Min})
+			} else if numberRange.Lower != nil {
+				amountQuery = append(amountQuery, f.Query{Key: columnName, Operator: ">", Value: *numberRange.Lower})
+			}
+			if numberRange.Max != nil {
+				amountQuery = append(amountQuery, f.Query{Key: columnName, Operator: "<=", Value: *numberRange.Max})
+			} else if numberRange.Upper != nil {
+				amountQuery = append(amountQuery, f.Query{Key: columnName, Operator: "<", Value: *numberRange.Upper})
+			}
+
+			if len(amountQuery) > 0 {
+				query = append(query, amountQuery...)
+			}
+		} else if skind == "slice" && reflect.Indirect(reflect.ValueOf(x)).Len() > 0 {
+			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
+			q := f.Query{Key: columnName, Operator: "in", Value: x}
+			query = append(query, q)
+		} else {
+			if _, ok := x.(*search.SearchModel); skind == "bool" || (strings.Contains(skind, "int") && x != 0) || (strings.Contains(skind, "float") && x != 0) || (!ok && skind == "ptr" &&
+				field.Pointer() != 0) {
+				v := value.Type().Field(i).Name
+				columnName := getFirestoreName(resultModelType, v)
+				if len(columnName) > 0 {
+					q := f.Query{Key: columnName, Operator: "==", Value: x}
+					query = append(query, q)
+				}
+			}
+		}
+	}
+	return query, fields
+}
+
+func getFieldByJson(modelType reflect.Type, jsonName string) (int, string, string) {
+	numField := modelType.NumField()
+	for i := 0; i < numField; i++ {
+		field := modelType.Field(i)
+		tag1, ok1 := field.Tag.Lookup("json")
+		if ok1 && strings.Split(tag1, ",")[0] == jsonName {
+			if tag2, ok2 := field.Tag.Lookup("firestore"); ok2 {
+				return i, field.Name, strings.Split(tag2, ",")[0]
+			}
+			return i, field.Name, ""
+		}
+	}
+	return -1, jsonName, jsonName
+}
+func getFirestoreName(modelType reflect.Type, fieldName string) string {
+	field, _ := modelType.FieldByName(fieldName)
+	bsonTag := field.Tag.Get("firestore")
+	tags := strings.Split(bsonTag, ",")
+	if len(tags) > 0 {
+		return tags[0]
+	}
+	return fieldName
+}
