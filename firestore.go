@@ -204,14 +204,20 @@ func FindOneAndDecodeWithIdIndexAndTracking(ctx context.Context, collection *fir
 	return true, nil
 }
 
-func FindOneAndReturnMapData(ctx context.Context, collection *firestore.CollectionRef, docID string) (bool, map[string]interface{}, error) {
+func FindOneMap(ctx context.Context, collection *firestore.CollectionRef, docID string) (bool, map[string]interface{}, error) {
 	doc, err := collection.Doc(docID).Get(ctx)
 	if err != nil {
 		return false, nil, err
 	}
 	return true, doc.Data(), nil
 }
-
+func FindOneDoc(ctx context.Context, collection *firestore.CollectionRef, docID string) (bool, *firestore.DocumentSnapshot, error) {
+	doc, err := collection.Doc(docID).Get(ctx)
+	if err != nil {
+		return false, nil, err
+	}
+	return true, doc, nil
+}
 func FindOneWithQueries(ctx context.Context, collection *firestore.CollectionRef, where []Query, modelType reflect.Type, createdTimeIndex int, updatedTimeIndex int) (interface{}, error) {
 	return FindOneWithQueriesAndTracking(ctx, collection, where, modelType, -1, -1)
 }
@@ -460,7 +466,7 @@ func DeleteOne(ctx context.Context, collection *firestore.CollectionRef, docID s
 	return 1, err
 }
 
-func insertOne(ctx context.Context, collection *firestore.CollectionRef, model interface{}, idIndex int) error {
+func Insert(ctx context.Context, collection *firestore.CollectionRef, idIndex int, model interface{}) error {
 	modelValue := reflect.Indirect(reflect.ValueOf(model))
 	idField := modelValue.Field(idIndex)
 	if reflect.Indirect(idField).Kind() != reflect.String {
@@ -477,19 +483,13 @@ func insertOne(ctx context.Context, collection *firestore.CollectionRef, model i
 	_, err := doc.Create(ctx, model)
 	return err
 }
-func InsertOne(ctx context.Context, collection *firestore.CollectionRef, model interface{}, idIndex int) (int64, error) {
-	modelValue := reflect.Indirect(reflect.ValueOf(model))
-	idField := modelValue.Field(idIndex)
-	if reflect.Indirect(idField).Kind() != reflect.String {
-		return 0, fmt.Errorf("the ID field should be string")
-	}
+func InsertOne(ctx context.Context, collection *firestore.CollectionRef, id string, model interface{}) (int64, error) {
 	var doc *firestore.DocumentRef
 	// TODO apply idField.IsZero() for golang 13 or above
-	if idField.Len() == 0 {
+	if len(id) > 0 {
 		doc = collection.NewDoc()
-		idField.Set(reflect.ValueOf(doc.ID))
 	} else {
-		doc = collection.Doc(idField.String())
+		doc = collection.Doc(id)
 	}
 	_, err := doc.Create(ctx, model)
 	if err != nil {
@@ -502,7 +502,7 @@ func InsertOne(ctx context.Context, collection *firestore.CollectionRef, model i
 	return 1, nil
 }
 
-func InsertOneWithVersion(ctx context.Context, collection *firestore.CollectionRef, model interface{}, idIndex int, versionIndex int) (int64, error) {
+func InsertOneWithVersion(ctx context.Context, collection *firestore.CollectionRef, id string, model interface{}, versionIndex int) (int64, error) {
 	var defaultVersion interface{}
 	modelType := reflect.TypeOf(model).Elem()
 	versionType := modelType.Field(versionIndex).Type
@@ -520,15 +520,14 @@ func InsertOneWithVersion(ctx context.Context, collection *firestore.CollectionR
 	if err != nil {
 		return 0, err
 	}
-	return InsertOne(ctx, collection, model, idIndex)
+	return InsertOne(ctx, collection, id, model)
 }
 
-func UpdateOne(ctx context.Context, collection *firestore.CollectionRef, model interface{}, query []Query) (int64, error) {
-	id := findId(query)
+func UpdateOne(ctx context.Context, collection *firestore.CollectionRef, id string, model interface{}) (int64, error) {
 	if len(id) == 0 {
 		return 0, fmt.Errorf("cannot update one an object that do not have id field")
 	}
-	_, err := collection.Doc(id).Update(ctx, BuildObjectToDotNotationUpdate(model))
+	_, err := collection.Doc(id).Set(ctx, model)
 	if err != nil {
 		return 0, err
 	}
@@ -540,7 +539,7 @@ func UpdateOneWithVersion(ctx context.Context, collection *firestore.CollectionR
 	if len(id) == 0 {
 		return 0, fmt.Errorf("cannot update one an Object that do not have id field")
 	}
-	itemExist, oldModel, err := FindOneAndReturnMapData(ctx, collection, id)
+	itemExist, oldModel, err := FindOneMap(ctx, collection, id)
 	if err != nil {
 		return 0, err
 	}
@@ -569,18 +568,25 @@ func UpdateOneWithVersion(ctx context.Context, collection *firestore.CollectionR
 	}
 }
 
-func PatchOneWithVersion(ctx context.Context, collection *firestore.CollectionRef, model map[string]interface{}, versionIndex int, versionFieldName string) (int64, error) {
-	id := getIdValueFromMap(model)
+func PatchOneWithVersion(ctx context.Context, collection *firestore.CollectionRef, id string, json map[string]interface{}, maps map[string]string, jsonVersion string) (int64, error) {
+	/*
+	id := getIdValueFromMap(json)
 	if len(id) == 0 {
 		return 0, fmt.Errorf("cannot update one an Object that do not have id field")
 	}
-	itemExist, oldModel, err := FindOneAndReturnMapData(ctx, collection, id)
+	 */
+	itemExist, doc, err := FindOneDoc(ctx, collection, id)
 	if err != nil {
 		return 0, err
 	}
 	if itemExist {
-		currentVersion := model[versionFieldName]
-		oldVersion := oldModel[versionFieldName]
+		fs := MapToFirestore(json, doc, maps)
+		currentVersion := json[jsonVersion]
+		firestoreVersion, ok := maps[jsonVersion]
+		if !ok {
+			return -1, fmt.Errorf("cannot map version between json and firestore")
+		}
+		oldVersion := fs[firestoreVersion]
 		switch currentVersion.(type) {
 		case int:
 			oldVersion = int(oldVersion.(int64))
@@ -588,8 +594,8 @@ func PatchOneWithVersion(ctx context.Context, collection *firestore.CollectionRe
 			oldVersion = int32(oldVersion.(int64))
 		}
 		if currentVersion == oldVersion {
-			updateMapVersion(model, versionIndex)
-			_, err := collection.Doc(id).Set(ctx, model, firestore.MergeAll)
+			updateMapVersion(fs, firestoreVersion)
+			_, err := collection.Doc(id).Set(ctx, fs)
 			if err != nil {
 				return 0, err
 			} else {
@@ -602,7 +608,7 @@ func PatchOneWithVersion(ctx context.Context, collection *firestore.CollectionRe
 		return 0, fmt.Errorf("not found")
 	}
 }
-func UpsertOne(ctx context.Context, collection *firestore.CollectionRef, model interface{}, idIndex int) (int64, error) {
+func UpsertOne(ctx context.Context, collection *firestore.CollectionRef, idIndex int, model interface{}) (int64, error) {
 	id := getIdValueFromModel(model, idIndex)
 	oldModel := reflect.New(reflect.TypeOf(model))
 	itemExist, err := FindOneAndDecode(ctx, collection, id, &oldModel)
@@ -612,22 +618,15 @@ func UpsertOne(ctx context.Context, collection *firestore.CollectionRef, model i
 		}
 	}
 	if itemExist {
-		query := Query{
-			Key:      "_id",
-			Operator: "==",
-			Value:    oldModel.Field(idIndex),
-		}
-		var queries []Query
-		queries = append(queries, query)
-		return UpdateOne(ctx, collection, model, queries)
+		return UpdateOne(ctx, collection, id, model)
 	} else {
-		return InsertOne(ctx, collection, model, idIndex)
+		return InsertOne(ctx, collection, id, model)
 	}
 }
 
 func UpsertOneWithVersion(ctx context.Context, collection *firestore.CollectionRef, model interface{}, versionIndex int, versionFieldName string, idIndex int) (int64, error) {
 	id := getIdValueFromModel(model, idIndex)
-	itemExist, oldModel, err := FindOneAndReturnMapData(ctx, collection, id)
+	itemExist, oldModel, err := FindOneMap(ctx, collection, id)
 	if err != nil {
 		if errNotFound := strings.Contains(err.Error(), "not found"); !errNotFound {
 			return 0, err
@@ -654,7 +653,7 @@ func UpsertOneWithVersion(ctx context.Context, collection *firestore.CollectionR
 			return -1, fmt.Errorf("wrong version")
 		}
 	} else {
-		return InsertOneWithVersion(ctx, collection, model, idIndex, versionIndex)
+		return InsertOneWithVersion(ctx, collection, id, model, versionIndex)
 	}
 }
 
@@ -691,15 +690,15 @@ func updateModelVersion(model interface{}, versionIndex int) {
 	}
 }
 
-func updateMapVersion(m map[string]interface{}, versionIndex int) {
-	if currentVersion, exist := m["version"]; exist {
+func updateMapVersion(m map[string]interface{}, version string) {
+	if currentVersion, exist := m[version]; exist {
 		switch currentVersion.(type) {
 		case int:
-			m["version"] = currentVersion.(int) + 1
+			m[version] = currentVersion.(int) + 1
 		case int32:
-			m["version"] = currentVersion.(int32) + 1
+			m[version] = currentVersion.(int32) + 1
 		case int64:
-			m["version"] = currentVersion.(int64) + 1
+			m[version] = currentVersion.(int64) + 1
 		default:
 			panic("version's type not supported")
 		}
@@ -712,25 +711,28 @@ func getFieldValueAtIndex(model interface{}, index int) interface{} {
 }
 
 func setValueWithIndex(model interface{}, index int, value interface{}) (interface{}, error) {
-	valueObject := reflect.Indirect(reflect.ValueOf(model))
-	numField := valueObject.NumField()
+	vo := reflect.Indirect(reflect.ValueOf(model))
+	numField := vo.NumField()
 	if index >= 0 && index < numField {
-		valueObject.Field(index).Set(reflect.ValueOf(value))
+		vo.Field(index).Set(reflect.ValueOf(value))
 		return model, nil
 	}
 	return nil, fmt.Errorf("error no found field index: %v", index)
 }
 
-func PatchOne(ctx context.Context, collection *firestore.CollectionRef, model map[string]interface{}, rowKey string, db *firestore.Client) (int64, error) {
-	if len(rowKey) == 0 {
+func PatchOne(ctx context.Context, collection *firestore.CollectionRef, id string, json map[string]interface{}, maps map[string]string) (int64, error) {
+	if len(id) == 0 {
 		return 0, fmt.Errorf("cannot patch one an Object that do not have id field")
 	}
-	batch := db.Batch()
-	ref := collection.Doc(rowKey)
-	batch.Update(ref, BuildObjectToDotNotationUpdate(model))
-	_, err := batch.Commit(ctx)
-	if err != nil {
-		return 0, err
+	docRef := collection.Doc(id)
+	doc, er1 := docRef.Get(ctx)
+	if er1 != nil{
+		return -1, er1
+	}
+	fs := MapToFirestore(json, doc, maps)
+	_, er2 := docRef.Set(ctx, fs)
+	if er2 != nil {
+		return 0, er2
 	}
 	return 1, nil
 }
@@ -972,4 +974,54 @@ func SetValue(model interface{}, index int, value interface{}) (interface{}, err
 
 	v.Field(index).Set(reflect.ValueOf(value))
 	return model, nil
+}
+
+
+func MakeFirestoreMap(modelType reflect.Type) map[string]string {
+	maps := make(map[string]string)
+	numField := modelType.NumField()
+	for i := 0; i < numField; i++ {
+		field := modelType.Field(i)
+		key1 := field.Name
+		if tag0, ok0 := field.Tag.Lookup("json"); ok0 {
+			if strings.Contains(tag0, ",") {
+				a := strings.Split(tag0, ",")
+				key1 = a[0]
+			} else {
+				key1 = tag0
+			}
+		}
+		if tag, ok := field.Tag.Lookup("firestore"); ok {
+			if tag != "-" {
+				if strings.Contains(tag, ",") {
+					a := strings.Split(tag, ",")
+					if key1 == "-" {
+						key1 = a[0]
+					}
+					maps[key1] = a[0]
+				} else {
+					if key1 == "-" {
+						key1 = tag
+					}
+					maps[key1] = tag
+				}
+			}
+		} else {
+			if key1 == "-" {
+				key1 = field.Name
+			}
+			maps[key1] = key1
+		}
+	}
+	return maps
+}
+func MapToFirestore(json map[string]interface{}, doc *firestore.DocumentSnapshot, maps map[string]string) map[string]interface{} {
+	fs := doc.Data()
+	for k, v := range json {
+		fk, ok := maps[k]
+		if ok {
+			fs[fk] = v
+		}
+	}
+	return fs
 }

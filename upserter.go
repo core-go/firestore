@@ -42,14 +42,15 @@ func NewUpserter(client *firestore.Client, collectionName string, modelType refl
 }
 
 func (w *Upserter) Write(ctx context.Context, model interface{}) error {
+	id := getIdValueFromModel(model, w.idx)
 	if w.Map != nil {
 		m2, er0 := w.Map(ctx, model)
 		if er0 != nil {
 			return er0
 		}
-		_, er1 := UpsertOne(ctx, w.collection, m2, w.idx)
+		_, er1 := UpdateOne(ctx, w.collection, id, m2)
 		return er1
 	}
-	_, er2 := UpsertOne(ctx, w.collection, model, w.idx)
+	_, er2 := UpdateOne(ctx, w.collection, id, model)
 	return er2
 }

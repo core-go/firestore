@@ -47,7 +47,7 @@ func (w *Inserter) Write(ctx context.Context, model interface{}) error {
 		if er0 != nil {
 			return er0
 		}
-		return insertOne(ctx, w.collection, m2, w.idx)
+		return Insert(ctx, w.collection, w.idx, m2)
 	}
-	return insertOne(ctx, w.collection, model, w.idx)
+	return Insert(ctx, w.collection, w.idx, model)
 }

@@ -42,22 +42,15 @@ func NewUpdater(client *firestore.Client, collectionName string, modelType refle
 }
 
 func (w *Updater) Write(ctx context.Context, model interface{}) error {
-	oldModel := reflect.New(reflect.TypeOf(model))
-	query := Query{
-		Key:      "_id",
-		Operator: "==",
-		Value:    oldModel.Field(w.idx),
-	}
-	var queries []Query
-	queries = append(queries, query)
+	id := getIdValueFromModel(model, w.idx)
 	if w.Map != nil {
 		m2, er0 := w.Map(ctx, model)
 		if er0 != nil {
 			return er0
 		}
-		_, er1 := UpdateOne(ctx, w.collection, m2, queries)
+		_, er1 := UpdateOne(ctx, w.collection, id, m2)
 		return er1
 	}
-	_, er2 := UpdateOne(ctx, w.collection, model, queries)
+	_, er2 := UpdateOne(ctx, w.collection, id, model)
 	return er2
 }
