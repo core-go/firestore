@@ -7,7 +7,7 @@ import (
 	"reflect"
 )
 
-type Upserter struct {
+type FirestoreWriter struct {
 	client     *firestore.Client
 	collection *firestore.CollectionRef
 	IdName     string
@@ -17,12 +17,12 @@ type Upserter struct {
 	Map        func(ctx context.Context, model interface{}) (interface{}, error)
 }
 
-func NewUpserterWithIdName(client *firestore.Client, collectionName string, modelType reflect.Type, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *Upserter {
+func NewFirestoreWriterWithId(client *firestore.Client, collectionName string, modelType reflect.Type, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *FirestoreWriter {
 	var idx int
 	if len(fieldName) == 0 {
 		idx, fieldName, _ = FindIdField(modelType)
 		if idx < 0 {
-			log.Println("Require Id value (Ex Load, Exist, Save, Upsert) because don't have any fields of " + modelType.Name() + " struct define _id bson tag.")
+			log.Println("Require Id value (Ex Load, Exist, Update, Save) because don't have any fields of " + modelType.Name() + " struct define _id bson tag.")
 		}
 	} else {
 		idx, _, _ = FindFieldByName(modelType, fieldName)
@@ -34,14 +34,14 @@ func NewUpserterWithIdName(client *firestore.Client, collectionName string, mode
 	}
 	modelsType := reflect.Zero(reflect.SliceOf(modelType)).Type()
 	collection := client.Collection(collectionName)
-	return &Upserter{client: client, collection: collection, IdName: fieldName, idx: idx, modelType: modelType, modelsType: modelsType, Map: mp}
+	return &FirestoreWriter{client: client, collection: collection, IdName: fieldName, idx: idx, modelType: modelType, modelsType: modelsType, Map: mp}
 }
 
-func NewUpserter(client *firestore.Client, collectionName string, modelType reflect.Type, options ...func(context.Context, interface{}) (interface{}, error)) *Upserter {
-	return NewUpserterWithIdName(client, collectionName, modelType, "", options...)
+func NewFirestoreWriter(client *firestore.Client, collectionName string, modelType reflect.Type, options ...func(context.Context, interface{}) (interface{}, error)) *FirestoreWriter {
+	return NewFirestoreWriterWithId(client, collectionName, modelType, "", options...)
 }
 
-func (w *Upserter) Write(ctx context.Context, model interface{}) error {
+func (w *FirestoreWriter) Write(ctx context.Context, model interface{}) error {
 	id := getIdValueFromModel(model, w.idx)
 	if w.Map != nil {
 		m2, er0 := w.Map(ctx, model)

@@ -608,7 +608,7 @@ func PatchOneWithVersion(ctx context.Context, collection *firestore.CollectionRe
 		return 0, fmt.Errorf("not found")
 	}
 }
-func UpsertOne(ctx context.Context, collection *firestore.CollectionRef, idIndex int, model interface{}) (int64, error) {
+func SaveOne(ctx context.Context, collection *firestore.CollectionRef, idIndex int, model interface{}) (int64, error) {
 	id := getIdValueFromModel(model, idIndex)
 	oldModel := reflect.New(reflect.TypeOf(model))
 	itemExist, err := FindOneAndDecode(ctx, collection, id, &oldModel)
@@ -624,7 +624,7 @@ func UpsertOne(ctx context.Context, collection *firestore.CollectionRef, idIndex
 	}
 }
 
-func UpsertOneWithVersion(ctx context.Context, collection *firestore.CollectionRef, model interface{}, versionIndex int, versionFieldName string, idIndex int) (int64, error) {
+func SaveOneWithVersion(ctx context.Context, collection *firestore.CollectionRef, model interface{}, versionIndex int, versionFieldName string, idIndex int) (int64, error) {
 	id := getIdValueFromModel(model, idIndex)
 	itemExist, oldModel, err := FindOneMap(ctx, collection, id)
 	if err != nil {
@@ -778,7 +778,7 @@ func FindFieldName(modelType reflect.Type, firestoreName string) (int, string, s
 }
 
 // ref : https://stackoverflow.com/questions/46725357/firestore-batch-add-is-not-a-function
-func InsertMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, models interface{}, idName string) (int64, error) {
+func InsertMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, idName string, models interface{}) (int64, error) {
 	batch := client.Batch()
 	switch reflect.TypeOf(models).Kind() {
 	case reflect.Slice:
@@ -806,7 +806,7 @@ func InsertMany(ctx context.Context, collection *firestore.CollectionRef, client
 	return int64(len(writeResult)), nil
 }
 
-func PatchMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, models interface{}, idName string) (int64, error) {
+func PatchMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, idName string, models interface{}) (int64, error) {
 	batch := client.Batch()
 	switch reflect.TypeOf(models).Kind() {
 	case reflect.Slice:
@@ -831,7 +831,7 @@ func PatchMany(ctx context.Context, collection *firestore.CollectionRef, client 
 	return int64(len(writeResult)), nil
 }
 
-func SaveMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, models interface{}, idName string) (int64, error) {
+func SaveMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, idName string, models interface{}) (int64, error) {
 	batch := client.Batch()
 	switch reflect.TypeOf(models).Kind() {
 	case reflect.Slice:
@@ -863,7 +863,7 @@ func SaveMany(ctx context.Context, collection *firestore.CollectionRef, client *
 	return int64(len(writeResult)), nil
 }
 
-func UpdateMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, models interface{}, idName string) (int64, error) {
+func UpdateMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, idName string, models interface{}) (int64, error) {
 	batch := client.Batch()
 	size := 0
 	switch reflect.TypeOf(models).Kind() {
