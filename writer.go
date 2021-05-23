@@ -56,10 +56,10 @@ func (s *Writer) Patch(ctx context.Context, data map[string]interface{}) (int64,
 }
 
 func (s *Writer) Save(ctx context.Context, model interface{}) (int64, error) {
-	if s.versionIndex >= 0 {
-		return SaveOneWithVersion(ctx, s.Collection, model, s.versionIndex, s.versionField, s.idIndex)
-	}
 	id := reflect.ValueOf(model).Field(s.idIndex).Interface().(string)
+	if s.versionIndex >= 0 {
+		return SaveOneWithVersion(ctx, s.Collection, id, model, s.versionIndex, s.versionField)
+	}
 	exist, er1 := Exist(ctx, s.Collection, id)
 	if er1 != nil {
 		return 0, er1

@@ -608,31 +608,32 @@ func PatchOneWithVersion(ctx context.Context, collection *firestore.CollectionRe
 		return 0, fmt.Errorf("not found")
 	}
 }
-func SaveOne(ctx context.Context, collection *firestore.CollectionRef, idIndex int, model interface{}) (int64, error) {
-	id := getIdValueFromModel(model, idIndex)
+func SaveOne(ctx context.Context, collection *firestore.CollectionRef, id string, model interface{}) (int64, error) {
 	oldModel := reflect.New(reflect.TypeOf(model))
-	itemExist, err := FindOneAndDecode(ctx, collection, id, &oldModel)
+	if len(id) == 0 {
+		return InsertOne(ctx, collection, id, model)
+	}
+	exist, err := FindOneAndDecode(ctx, collection, id, &oldModel)
 	if err != nil {
 		if errNotFound := strings.Contains(err.Error(), "not found"); !errNotFound {
 			return 0, err
 		}
 	}
-	if itemExist {
+	if exist {
 		return UpdateOne(ctx, collection, id, model)
 	} else {
 		return InsertOne(ctx, collection, id, model)
 	}
 }
 
-func SaveOneWithVersion(ctx context.Context, collection *firestore.CollectionRef, model interface{}, versionIndex int, versionFieldName string, idIndex int) (int64, error) {
-	id := getIdValueFromModel(model, idIndex)
-	itemExist, oldModel, err := FindOneMap(ctx, collection, id)
+func SaveOneWithVersion(ctx context.Context, collection *firestore.CollectionRef, id string, model interface{}, versionIndex int, versionFieldName string) (int64, error) {
+	exist, oldModel, err := FindOneMap(ctx, collection, id)
 	if err != nil {
 		if errNotFound := strings.Contains(err.Error(), "not found"); !errNotFound {
 			return 0, err
 		}
 	}
-	if itemExist {
+	if exist {
 		currentVersion := getFieldValueAtIndex(model, versionIndex)
 		oldVersion := oldModel[versionFieldName]
 		switch reflect.TypeOf(currentVersion).String() {

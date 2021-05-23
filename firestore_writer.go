@@ -48,8 +48,18 @@ func (w *FirestoreWriter) Write(ctx context.Context, model interface{}) error {
 		if er0 != nil {
 			return er0
 		}
+		if len(id) == 0 {
+			doc := w.collection.NewDoc()
+			_, er1 := doc.Create(ctx, m2)
+			return er1
+		}
 		_, er1 := UpdateOne(ctx, w.collection, id, m2)
 		return er1
+	}
+	if len(id) == 0 {
+		doc := w.collection.NewDoc()
+		_, er2 := doc.Create(ctx, model)
+		return er2
 	}
 	_, er2 := UpdateOne(ctx, w.collection, id, model)
 	return er2
