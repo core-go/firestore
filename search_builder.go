@@ -52,21 +52,16 @@ func NewSearchBuilderWithQuery(client *firestore.Client, collectionName string, 
 func NewSearchBuilder(client *firestore.Client, collectionName string, modelType reflect.Type, buildQuery func(interface{}) ([]Query, []string), getSortAndRefId func(interface{}) (string, string), createdTimeFieldName string, updatedTimeFieldName string, options ...string) *SearchBuilder {
 	return NewSearchBuilderWithQuery(client, collectionName, modelType, buildQuery, getSortAndRefId, BuildSort, createdTimeFieldName, updatedTimeFieldName, options...)
 }
-func (b *SearchBuilder) Search(ctx context.Context, m interface{}, results interface{}, pageIndex int64, pageSize int64, options ...int64) (int64, error) {
+func (b *SearchBuilder) Search(ctx context.Context, m interface{}, results interface{}, limit int64, options ...int64) (int64, string, error) {
 	query, fields := b.BuildQuery(m)
 
 	s, refId := b.GetSortAndRefId(m)
 	sort := b.BuildSort(s, b.ModelType)
-	var firstPageSize int64
-	if len(options) > 0 && options[0] > 0 {
-		firstPageSize = options[0]
-	} else {
-		firstPageSize = 0
-	}
-	return BuildSearchResult(ctx, b.Collection, results, query, fields, sort, pageSize, firstPageSize, refId, b.idIndex, b.createdTimeIndex, b.updatedTimeIndex)
+	refId, err := BuildSearchResult(ctx, b.Collection, results, query, fields, sort, limit, refId, b.idIndex, b.createdTimeIndex, b.updatedTimeIndex)
+	return -1, refId, err
 }
 
-func BuildSearchResult(ctx context.Context, collection *firestore.CollectionRef, results interface{}, query []Query, fields []string, sort map[string]firestore.Direction, pageSize int64, initPageSize int64, refId string, idIndex int, createdTimeIndex int, updatedTimeIndex int) (int64, error) {
+func BuildSearchResult(ctx context.Context, collection *firestore.CollectionRef, results interface{}, query []Query, fields []string, sort map[string]firestore.Direction, limit int64, refId string, idIndex int, createdTimeIndex int, updatedTimeIndex int) (string, error) {
 	/*
 		var limit, skip int64
 		if initPageSize > 0 {
@@ -84,34 +79,30 @@ func BuildSearchResult(ctx context.Context, collection *firestore.CollectionRef,
 
 		queries, er0 := BuildQuerySearch(ctx, collection, query, fields, sort, int(limit), int(skip), refId)
 	*/
-	var limit int
+	var ilimit int
 	if len(refId) > 0 {
-		limit = int(pageSize)
-	} else {
-		if initPageSize > 0 {
-			limit = int(initPageSize)
-		} else {
-			limit = int(pageSize)
-		}
+		ilimit = int(limit)
 	}
-	queries, er0 := BuildQuerySearch(ctx, collection, query, fields, sort, limit, 0, refId)
+	queries, er0 := BuildQuerySearch(ctx, collection, query, fields, sort, ilimit, refId)
 	if er0 != nil {
-		return -1, er0
+		return "", er0
 	}
 	modelType := reflect.TypeOf(results).Elem().Elem()
 	iter := queries.Documents(ctx)
+	var lastId string
 	for {
 		doc, er2 := iter.Next()
 		if er2 == iterator.Done {
 			break
 		}
 		if er2 != nil {
-			return 0, er2
+			return "", er2
 		}
 		result := reflect.New(modelType).Interface()
+		lastId = doc.Ref.ID
 		er3 := doc.DataTo(&result)
 		if er3 != nil {
-			return 0, er3
+			return lastId, er3
 		}
 		BindCommonFields(result, doc, idIndex, createdTimeIndex, updatedTimeIndex)
 		//SetValue(result, idIndex, doc.Ref.ID)
@@ -125,10 +116,10 @@ func BuildSearchResult(ctx context.Context, collection *firestore.CollectionRef,
 		}
 		count := int64(len(countResult))
 	*/
-	return -1, nil
+	return lastId, nil
 }
 
-func BuildQuerySearch(ctx context.Context, collection *firestore.CollectionRef, queries []Query, fields []string, sort map[string]firestore.Direction, limit int, skip int, refId string) (firestore.Query, error) {
+func BuildQuerySearch(ctx context.Context, collection *firestore.CollectionRef, queries []Query, fields []string, sort map[string]firestore.Direction, limit int, refId string, options...int) (firestore.Query, error) {
 	q := collection.Query
 	if len(sort) > 0 {
 		i := 0
@@ -140,6 +131,10 @@ func BuildQuerySearch(ctx context.Context, collection *firestore.CollectionRef, 
 			}
 			q = q.OrderBy(k, v)
 		}
+	}
+	var skip = 0
+	if len(options) > 0 && options[0] > 0 {
+		skip = options[0]
 	}
 	if limit != 0 {
 		q = q.Limit(limit).Offset(skip)
