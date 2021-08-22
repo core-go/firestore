@@ -54,8 +54,8 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 					fields = append(fields, columnName)
 				}
 			}
-			if len(v.Keyword) > 0 {
-				keyword = strings.TrimSpace(v.Keyword)
+			if len(v.Q) > 0 {
+				keyword = strings.TrimSpace(v.Q)
 			}
 			continue
 		} else if skind == "string" {
@@ -114,27 +114,27 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 		} else if rangeDate, ok := x.(*search.DateRange); ok && rangeDate != nil {
 			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
 			actionDateQuery := make([]f.Query, 0)
-			if rangeDate.StartDate == nil && rangeDate.EndDate == nil {
+			if rangeDate.Min == nil && rangeDate.Max == nil {
 				continue
-			} else if rangeDate.StartDate == nil {
-				actionDateQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeDate.EndDate}}
-			} else if rangeDate.EndDate == nil {
-				actionDateQuery = []f.Query{{Key: columnName, Operator: ">=", Value: rangeDate.StartDate}}
+			} else if rangeDate.Min == nil {
+				actionDateQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeDate.Max}}
+			} else if rangeDate.Max == nil {
+				actionDateQuery = []f.Query{{Key: columnName, Operator: ">=", Value: rangeDate.Min}}
 			} else {
-				actionDateQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeDate.EndDate}, {Key: columnName, Operator: ">=", Value: rangeDate.StartDate}}
+				actionDateQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeDate.Max}, {Key: columnName, Operator: ">=", Value: rangeDate.Min}}
 			}
 			query = append(query, actionDateQuery...)
 		} else if rangeDate, ok := x.(search.DateRange); ok {
 			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
 			actionDateQuery := make([]f.Query, 0)
-			if rangeDate.StartDate == nil && rangeDate.EndDate == nil {
+			if rangeDate.Min == nil && rangeDate.Max == nil {
 				continue
-			} else if rangeDate.StartDate == nil {
-				actionDateQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeDate.EndDate}}
-			} else if rangeDate.EndDate == nil {
-				actionDateQuery = []f.Query{{Key: columnName, Operator: ">=", Value: rangeDate.StartDate}}
+			} else if rangeDate.Min == nil {
+				actionDateQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeDate.Max}}
+			} else if rangeDate.Max == nil {
+				actionDateQuery = []f.Query{{Key: columnName, Operator: ">=", Value: rangeDate.Min}}
 			} else {
-				actionDateQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeDate.EndDate}, {Key: columnName, Operator: ">=", Value: rangeDate.StartDate}}
+				actionDateQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeDate.Max}, {Key: columnName, Operator: ">=", Value: rangeDate.Min}}
 			}
 			query = append(query, actionDateQuery...)
 		} else if numberRange, ok := x.(*search.NumberRange); ok && numberRange != nil {
