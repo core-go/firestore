@@ -23,7 +23,7 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 	var query = make([]f.Query, 0)
 	fields := make([]string, 0)
 
-	if _, ok := sm.(*search.SearchModel); ok {
+	if _, ok := sm.(*search.Filter); ok {
 		return query, fields
 	}
 
@@ -41,7 +41,7 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 		kind := field.Kind()
 		skind := kind.String()
 		x := field.Interface()
-		if v, ok := x.(*search.SearchModel); ok {
+		if v, ok := x.(*search.Filter); ok {
 			if len(v.Fields) > 0 {
 				for _, key := range v.Fields {
 					i, _, columnName := getFieldByJson(resultModelType, key)
@@ -178,7 +178,7 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 			q := f.Query{Key: columnName, Operator: "in", Value: x}
 			query = append(query, q)
 		} else {
-			if _, ok := x.(*search.SearchModel); skind == "bool" || (strings.Contains(skind, "int") && x != 0) || (strings.Contains(skind, "float") && x != 0) || (!ok && skind == "ptr" &&
+			if _, ok := x.(*search.Filter); skind == "bool" || (strings.Contains(skind, "int") && x != 0) || (strings.Contains(skind, "float") && x != 0) || (!ok && skind == "ptr" &&
 				field.Pointer() != 0) {
 				v := value.Type().Field(i).Name
 				columnName := getFirestoreName(resultModelType, v)
