@@ -39,8 +39,32 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 	for i := 0; i < numField; i++ {
 		field := value.Field(i)
 		kind := field.Kind()
-		skind := kind.String()
 		x := field.Interface()
+		ps := false
+		var psv string
+		if kind == reflect.Ptr {
+			if field.IsNil() {
+				continue
+			}
+			s0, ok0 := x.(*string)
+			if ok0 {
+				if s0 == nil || len(*s0) == 0 {
+					continue
+				}
+				ps = true
+				psv = *s0
+			}
+			field = field.Elem()
+			kind = field.Kind()
+		}
+		s0, ok0 := x.(string)
+		if ok0 {
+			if len(s0) == 0 {
+				continue
+			}
+			psv = s0
+		}
+		ks := kind.String()
 		if v, ok := x.(*search.Filter); ok {
 			if len(v.Fields) > 0 {
 				for _, key := range v.Fields {
@@ -58,12 +82,12 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 				keyword = strings.TrimSpace(v.Q)
 			}
 			continue
-		} else if skind == "string" {
+		} else if ps || ks == "string" {
 			var keywordQuery f.Query
 			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
 			var operator string
 			var searchValue interface{}
-			if field.Len() > 0 {
+			if len(psv) > 0 {
 				const defaultKey = "contain"
 				if key, ok := value.Type().Field(i).Tag.Lookup("match"); ok {
 					if format, exist := keywordFormat[key]; exist {
@@ -74,7 +98,7 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 				} else if format, exist := keywordFormat[defaultKey]; exist {
 					operator = format
 				}
-				searchValue = field.Interface()
+				searchValue = psv
 			} else if len(keyword) > 0 {
 				if key, ok := value.Type().Field(i).Tag.Lookup("keyword"); ok {
 					if format, exist := keywordFormat[key]; exist {
@@ -173,12 +197,12 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 			if len(amountQuery) > 0 {
 				query = append(query, amountQuery...)
 			}
-		} else if skind == "slice" && reflect.Indirect(reflect.ValueOf(x)).Len() > 0 {
+		} else if ks == "slice" && reflect.Indirect(reflect.ValueOf(x)).Len() > 0 {
 			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
 			q := f.Query{Key: columnName, Operator: "in", Value: x}
 			query = append(query, q)
 		} else {
-			if _, ok := x.(*search.Filter); skind == "bool" || (strings.Contains(skind, "int") && x != 0) || (strings.Contains(skind, "float") && x != 0) || (!ok && skind == "ptr" &&
+			if _, ok := x.(*search.Filter); ks == "bool" || (strings.Contains(ks, "int") && x != 0) || (strings.Contains(ks, "float") && x != 0) || (!ok && ks == "ptr" &&
 				field.Pointer() != 0) {
 				v := value.Type().Field(i).Name
 				columnName := getFirestoreName(resultModelType, v)
