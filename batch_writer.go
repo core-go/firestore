@@ -28,7 +28,7 @@ func NewBatchWriterWithIdName(client *firestore.Client, collectionName string, m
 	collection := client.Collection(collectionName)
 	return &BatchWriter{client: client, collection: collection, IdName: fieldName, modelType: modelType, modelsType: modelsType, Map: mp}
 }
-func NewBatchWriter(client *firestore.Client, collectionName string, modelType reflect.Type, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *BatchWriter {
+func NewBatchWriter(client *firestore.Client, collectionName string, modelType reflect.Type, options ...func(context.Context, interface{}) (interface{}, error)) *BatchWriter {
 	return NewBatchWriterWithIdName(client, collectionName, modelType, "", options...)
 }
 func (w *BatchWriter) Write(ctx context.Context, models interface{}) ([]int, []int, error) {
