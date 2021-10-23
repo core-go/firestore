@@ -35,7 +35,6 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 		"contain": "==",
 		"equal":   "==",
 	}
-
 	for i := 0; i < numField; i++ {
 		field := value.Field(i)
 		kind := field.Kind()
@@ -85,18 +84,23 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 		} else if ps || ks == "string" {
 			var keywordQuery f.Query
 			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
-			var operator string
+			// var operator string
+			operator := "=="
 			var searchValue interface{}
 			if len(psv) > 0 {
 				const defaultKey = "contain"
-				if key, ok := value.Type().Field(i).Tag.Lookup("match"); ok {
-					if format, exist := keywordFormat[key]; exist {
+				if key, ok := value.Type().Field(i).Tag.Lookup("operator"); ok && len(key) > 0 {
+					operator = key
+				} else {
+					if key, ok := value.Type().Field(i).Tag.Lookup("match"); ok {
+						if format, exist := keywordFormat[key]; exist {
+							operator = format
+						} else {
+							log.Panicf("match not support \"%v\" format\n", key)
+						}
+					} else if format, exist := keywordFormat[defaultKey]; exist {
 						operator = format
-					} else {
-						log.Panicf("match not support \"%v\" format\n", key)
 					}
-				} else if format, exist := keywordFormat[defaultKey]; exist {
-					operator = format
 				}
 				searchValue = psv
 			} else if len(keyword) > 0 {
@@ -202,12 +206,15 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 			q := f.Query{Key: columnName, Operator: "in", Value: x}
 			query = append(query, q)
 		} else {
-			if _, ok := x.(*search.Filter); ks == "bool" || (strings.Contains(ks, "int") && x != 0) || (strings.Contains(ks, "float") && x != 0) || (!ok && ks == "ptr" &&
-				field.Pointer() != 0) {
+			if _, ok := x.(*search.Filter); ks == "bool" || (strings.Contains(ks, "int") && x != 0) || (strings.Contains(ks, "float") && x != 0) || (!ok && ks == "ptr" && field.Pointer() != 0) {
 				v := value.Type().Field(i).Name
 				columnName := getFirestoreName(resultModelType, v)
 				if len(columnName) > 0 {
-					q := f.Query{Key: columnName, Operator: "==", Value: x}
+					oper := "=="
+					if key, ok := value.Type().Field(i).Tag.Lookup("operator"); ok && len(key) > 0 {
+						oper = key
+					}
+					q := f.Query{Key: columnName, Operator: oper, Value: x}
 					query = append(query, q)
 				}
 			}

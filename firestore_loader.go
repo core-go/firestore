@@ -7,7 +7,7 @@ import (
 	"reflect"
 )
 
-type Loader struct {
+type FirestoreLoader struct {
 	Client           *firestore.Client
 	Collection       *firestore.CollectionRef
 	modelType        reflect.Type
@@ -18,7 +18,7 @@ type Loader struct {
 	updatedTimeIndex int
 }
 
-func NewLoader(client *firestore.Client, collectionName string, modelType reflect.Type, createdTimeFieldName string, updatedTimeFieldName string, options ...string) *Loader {
+func NewFirestoreLoader(client *firestore.Client, collectionName string, modelType reflect.Type, createdTimeFieldName string, updatedTimeFieldName string, options ...string) *FirestoreLoader {
 	idx := -1
 	var idFieldName string
 	if len(options) > 0 && len(options[0]) > 0 {
@@ -44,44 +44,31 @@ func NewLoader(client *firestore.Client, collectionName string, modelType reflec
 	if len(updatedTimeFieldName) >= 0 {
 		utIdx, _, _ = FindFieldByName(modelType, updatedTimeFieldName)
 	}
-	return &Loader{Client: client, Collection: client.Collection(collectionName), modelType: modelType, idIndex: idx, collectionName: collectionName, jsonIdName: jsonIdName, createdTimeIndex: ctIdx, updatedTimeIndex: utIdx}
+	return &FirestoreLoader{Client: client, Collection: client.Collection(collectionName), modelType: modelType, idIndex: idx, collectionName: collectionName, jsonIdName: jsonIdName, createdTimeIndex: ctIdx, updatedTimeIndex: utIdx}
 }
 
-func (s *Loader) Id() string {
+func (s *FirestoreLoader) Id() string {
 	return s.jsonIdName
 }
 
-func (s *Loader) All(ctx context.Context) (interface{}, error) {
+func (s *FirestoreLoader) All(ctx context.Context) (interface{}, error) {
 	query := make([]Query, 0)
 	return FindWithIdIndexAndTracking(ctx, s.Collection, query, s.modelType, s.idIndex, s.createdTimeIndex, s.updatedTimeIndex)
 }
 
-func (s *Loader) Load(ctx context.Context, id interface{}) (interface{}, error) {
+func (s *FirestoreLoader) Load(ctx context.Context, id interface{}) (interface{}, error) {
 	sid := id.(string)
 	return FindOneWithIdIndexAndTracking(ctx, s.Collection, sid, s.modelType, s.idIndex, s.createdTimeIndex, s.updatedTimeIndex)
 }
 
-func (s *Loader) Get(ctx context.Context, id interface{}, result interface{}) (bool, error) {
-	sid := id.(string)
-	return FindOneAndDecode(ctx, s.Collection, sid, result)
+func (s *FirestoreLoader) Get(ctx context.Context, id string, result interface{}) (bool, error) {
+	return FindOneAndDecode(ctx, s.Collection, id, result)
 }
 
-func (s *Loader) LoadAndDecode(ctx context.Context, id interface{}, result interface{}) (bool, error) {
-	sid := id.(string)
-	return FindOneAndDecode(ctx, s.Collection, sid, result)
+func (s *FirestoreLoader) LoadAndDecode(ctx context.Context, id string, result interface{}) (bool, error) {
+	return FindOneAndDecode(ctx, s.Collection, id, result)
 }
 
-func (s *Loader) Exist(ctx context.Context, id interface{}) (bool, error) {
-	sid := id.(string)
-	return Exist(ctx, s.Collection, sid)
+func (s *FirestoreLoader) Exist(ctx context.Context, id string) (bool, error) {
+	return Exist(ctx, s.Collection, id)
 }
-
-/*
-func (s *Loader) LoadByIds(ctx context.Context, ids []string) (interface{}, []string, []error) {
-	return FindByIds(ctx, s.Collection, ids, s.modelType, s.jsonIdName)
-}
-
-func (s *Loader) LoadByIdsAndDecode(ctx context.Context, ids []string, result interface{}) ([]string, []error) {
-	return FindByIdsAndDecode(ctx, s.Collection, ids, result, s.jsonIdName)
-}
-*/

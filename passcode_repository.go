@@ -6,13 +6,15 @@ import (
 	"time"
 )
 
-type PasscodeService struct {
+type PasscodeRepository struct {
 	collection    *firestore.CollectionRef
 	passcodeName  string
 	expiredAtName string
 }
-
-func NewPasscodeService(client *firestore.Client, collectionName string, options ...string) *PasscodeService {
+func NewPasscodeService(client *firestore.Client, collectionName string, options ...string) *PasscodeRepository {
+	return NewPasscodeRepository(client, collectionName, options...)
+}
+func NewPasscodeRepository(client *firestore.Client, collectionName string, options ...string) *PasscodeRepository {
 	var passcodeName, expiredAtName string
 	if len(options) >= 1 && len(options[0]) > 0 {
 		expiredAtName = options[0]
@@ -24,10 +26,10 @@ func NewPasscodeService(client *firestore.Client, collectionName string, options
 	} else {
 		passcodeName = "passcode"
 	}
-	return &PasscodeService{client.Collection(collectionName), passcodeName, expiredAtName}
+	return &PasscodeRepository{client.Collection(collectionName), passcodeName, expiredAtName}
 }
 
-func (s *PasscodeService) Save(ctx context.Context, id string, passcode string, expiredAt time.Time) (int64, error) {
+func (s *PasscodeRepository) Save(ctx context.Context, id string, passcode string, expiredAt time.Time) (int64, error) {
 	pass := make(map[string]interface{})
 	pass[s.passcodeName] = passcode
 	pass[s.expiredAtName] = expiredAt
@@ -38,7 +40,7 @@ func (s *PasscodeService) Save(ctx context.Context, id string, passcode string, 
 	return 1, nil
 }
 
-func (s *PasscodeService) Load(ctx context.Context, id string) (string, time.Time, error) {
+func (s *PasscodeRepository) Load(ctx context.Context, id string) (string, time.Time, error) {
 	doc, err := s.collection.Doc(id).Get(ctx)
 	if err != nil {
 		return "", time.Now(), err
@@ -54,6 +56,6 @@ func (s *PasscodeService) Load(ctx context.Context, id string) (string, time.Tim
 	return code.(string), expiredAt.(time.Time), nil
 }
 
-func (s *PasscodeService) Delete(ctx context.Context, id string) (int64, error) {
+func (s *PasscodeRepository) Delete(ctx context.Context, id string) (int64, error) {
 	return DeleteOne(ctx, s.collection, id)
 }
