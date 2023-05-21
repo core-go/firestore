@@ -68,7 +68,7 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 			if len(v.Fields) > 0 {
 				for _, key := range v.Fields {
 					i, _, columnName := getFieldByJson(resultModelType, key)
-					if len(columnName) < 0 {
+					if len(columnName) <= 0 {
 						fields = fields[len(fields):]
 						break
 					} else if i == -1 {
@@ -114,29 +114,29 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 				searchValue = keyword
 			}
 			if len(columnName) > 0 && len(operator) > 0 {
-				keywordQuery = f.Query{Key: columnName, Operator: operator, Value: searchValue}
+				keywordQuery = f.Query{Path: columnName, Operator: operator, Value: searchValue}
 				query = append(query, keywordQuery)
 			}
 		} else if rangeTime, ok := x.(*search.TimeRange); ok && rangeTime != nil {
 			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
 			actionTimeQuery := make([]f.Query, 0)
-			if rangeTime.StartTime == nil {
-				actionTimeQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeTime.EndTime}}
-			} else if rangeTime.EndTime == nil {
-				actionTimeQuery = []f.Query{{Key: columnName, Operator: ">=", Value: rangeTime.StartTime}}
+			if rangeTime.Min == nil {
+				actionTimeQuery = []f.Query{{Path: columnName, Operator: "<=", Value: rangeTime.Max}}
+			} else if rangeTime.Max == nil {
+				actionTimeQuery = []f.Query{{Path: columnName, Operator: ">=", Value: rangeTime.Min}}
 			} else {
-				actionTimeQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeTime.EndTime}, {Key: columnName, Operator: ">=", Value: rangeTime.StartTime}}
+				actionTimeQuery = []f.Query{{Path: columnName, Operator: "<=", Value: rangeTime.Max}, {Path: columnName, Operator: ">=", Value: rangeTime.Min}}
 			}
 			query = append(query, actionTimeQuery...)
 		} else if rangeTime, ok := x.(search.TimeRange); ok {
 			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
 			actionTimeQuery := make([]f.Query, 0)
-			if rangeTime.StartTime == nil {
-				actionTimeQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeTime.EndTime}}
-			} else if rangeTime.EndTime == nil {
-				actionTimeQuery = []f.Query{{Key: columnName, Operator: ">=", Value: rangeTime.StartTime}}
+			if rangeTime.Min == nil {
+				actionTimeQuery = []f.Query{{Path: columnName, Operator: "<=", Value: rangeTime.Max}}
+			} else if rangeTime.Max == nil {
+				actionTimeQuery = []f.Query{{Path: columnName, Operator: ">=", Value: rangeTime.Min}}
 			} else {
-				actionTimeQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeTime.EndTime}, {Key: columnName, Operator: ">=", Value: rangeTime.StartTime}}
+				actionTimeQuery = []f.Query{{Path: columnName, Operator: "<=", Value: rangeTime.Max}, {Path: columnName, Operator: ">=", Value: rangeTime.Min}}
 			}
 			query = append(query, actionTimeQuery...)
 		} else if rangeDate, ok := x.(*search.DateRange); ok && rangeDate != nil {
@@ -145,11 +145,11 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 			if rangeDate.Min == nil && rangeDate.Max == nil {
 				continue
 			} else if rangeDate.Min == nil {
-				actionDateQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeDate.Max}}
+				actionDateQuery = []f.Query{{Path: columnName, Operator: "<=", Value: rangeDate.Max}}
 			} else if rangeDate.Max == nil {
-				actionDateQuery = []f.Query{{Key: columnName, Operator: ">=", Value: rangeDate.Min}}
+				actionDateQuery = []f.Query{{Path: columnName, Operator: ">=", Value: rangeDate.Min}}
 			} else {
-				actionDateQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeDate.Max}, {Key: columnName, Operator: ">=", Value: rangeDate.Min}}
+				actionDateQuery = []f.Query{{Path: columnName, Operator: "<=", Value: rangeDate.Max}, {Path: columnName, Operator: ">=", Value: rangeDate.Min}}
 			}
 			query = append(query, actionDateQuery...)
 		} else if rangeDate, ok := x.(search.DateRange); ok {
@@ -158,11 +158,11 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 			if rangeDate.Min == nil && rangeDate.Max == nil {
 				continue
 			} else if rangeDate.Min == nil {
-				actionDateQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeDate.Max}}
+				actionDateQuery = []f.Query{{Path: columnName, Operator: "<=", Value: rangeDate.Max}}
 			} else if rangeDate.Max == nil {
-				actionDateQuery = []f.Query{{Key: columnName, Operator: ">=", Value: rangeDate.Min}}
+				actionDateQuery = []f.Query{{Path: columnName, Operator: ">=", Value: rangeDate.Min}}
 			} else {
-				actionDateQuery = []f.Query{{Key: columnName, Operator: "<=", Value: rangeDate.Max}, {Key: columnName, Operator: ">=", Value: rangeDate.Min}}
+				actionDateQuery = []f.Query{{Path: columnName, Operator: "<=", Value: rangeDate.Max}, {Path: columnName, Operator: ">=", Value: rangeDate.Min}}
 			}
 			query = append(query, actionDateQuery...)
 		} else if numberRange, ok := x.(*search.NumberRange); ok && numberRange != nil {
@@ -170,14 +170,14 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 			amountQuery := make([]f.Query, 0)
 
 			if numberRange.Min != nil {
-				amountQuery = append(amountQuery, f.Query{Key: columnName, Operator: ">=", Value: *numberRange.Min})
+				amountQuery = append(amountQuery, f.Query{Path: columnName, Operator: ">=", Value: *numberRange.Min})
 			} else if numberRange.Lower != nil {
-				amountQuery = append(amountQuery, f.Query{Key: columnName, Operator: ">", Value: *numberRange.Lower})
+				amountQuery = append(amountQuery, f.Query{Path: columnName, Operator: ">", Value: *numberRange.Lower})
 			}
 			if numberRange.Max != nil {
-				amountQuery = append(amountQuery, f.Query{Key: columnName, Operator: "<=", Value: *numberRange.Max})
+				amountQuery = append(amountQuery, f.Query{Path: columnName, Operator: "<=", Value: *numberRange.Max})
 			} else if numberRange.Upper != nil {
-				amountQuery = append(amountQuery, f.Query{Key: columnName, Operator: "<", Value: *numberRange.Upper})
+				amountQuery = append(amountQuery, f.Query{Path: columnName, Operator: "<", Value: *numberRange.Upper})
 			}
 
 			if len(amountQuery) > 0 {
@@ -188,14 +188,14 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 			amountQuery := make([]f.Query, 0)
 
 			if numberRange.Min != nil {
-				amountQuery = append(amountQuery, f.Query{Key: columnName, Operator: ">=", Value: *numberRange.Min})
+				amountQuery = append(amountQuery, f.Query{Path: columnName, Operator: ">=", Value: *numberRange.Min})
 			} else if numberRange.Lower != nil {
-				amountQuery = append(amountQuery, f.Query{Key: columnName, Operator: ">", Value: *numberRange.Lower})
+				amountQuery = append(amountQuery, f.Query{Path: columnName, Operator: ">", Value: *numberRange.Lower})
 			}
 			if numberRange.Max != nil {
-				amountQuery = append(amountQuery, f.Query{Key: columnName, Operator: "<=", Value: *numberRange.Max})
+				amountQuery = append(amountQuery, f.Query{Path: columnName, Operator: "<=", Value: *numberRange.Max})
 			} else if numberRange.Upper != nil {
-				amountQuery = append(amountQuery, f.Query{Key: columnName, Operator: "<", Value: *numberRange.Upper})
+				amountQuery = append(amountQuery, f.Query{Path: columnName, Operator: "<", Value: *numberRange.Upper})
 			}
 
 			if len(amountQuery) > 0 {
@@ -203,7 +203,7 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 			}
 		} else if ks == "slice" && reflect.Indirect(reflect.ValueOf(x)).Len() > 0 {
 			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
-			q := f.Query{Key: columnName, Operator: "in", Value: x}
+			q := f.Query{Path: columnName, Operator: "in", Value: x}
 			query = append(query, q)
 		} else {
 			if _, ok := x.(*search.Filter); ks == "bool" || (strings.Contains(ks, "int") && x != 0) || (strings.Contains(ks, "float") && x != 0) || (!ok && ks == "ptr" && field.Pointer() != 0) {
@@ -214,7 +214,7 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 					if key, ok := value.Type().Field(i).Tag.Lookup("operator"); ok && len(key) > 0 {
 						oper = key
 					}
-					q := f.Query{Key: columnName, Operator: oper, Value: x}
+					q := f.Query{Path: columnName, Operator: oper, Value: x}
 					query = append(query, q)
 				}
 			}

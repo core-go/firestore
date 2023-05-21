@@ -1,7 +1,7 @@
 package firestore
 
 type Query struct {
-	Key      string
+	Path     string
 	Operator string
 	Value    interface{}
 }

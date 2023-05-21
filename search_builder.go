@@ -80,9 +80,8 @@ func BuildSearchResult(ctx context.Context, collection *firestore.CollectionRef,
 		queries, er0 := BuildQuerySearch(ctx, collection, query, fields, sort, int(limit), int(skip), refId)
 	*/
 	var ilimit int
-	if len(refId) > 0 {
-		ilimit = int(limit)
-	}
+	ilimit = int(limit)
+
 	queries, er0 := BuildQuerySearch(ctx, collection, query, fields, sort, ilimit, refId)
 	if er0 != nil {
 		return "", er0
@@ -105,51 +104,58 @@ func BuildSearchResult(ctx context.Context, collection *firestore.CollectionRef,
 			return lastId, er3
 		}
 		BindCommonFields(result, doc, idIndex, createdTimeIndex, updatedTimeIndex)
-		//SetValue(result, idIndex, doc.Ref.ID)
+		SetValue(result, idIndex, doc.Ref.ID)
 		results = appendToArray(results, result)
 	}
-	/*
-		queryCount := BuildQuerySearch(ctx, collection, query, fields, nil, 0, 0, refId).Documents(ctx)
-		countResult, er4 := queryCount.GetAll()
-		if er4 != nil {
-			return results, 0, er4
-		}
-		count := int64(len(countResult))
-	*/
+
 	return lastId, nil
 }
 
-func BuildQuerySearch(ctx context.Context, collection *firestore.CollectionRef, queries []Query, fields []string, sort map[string]firestore.Direction, limit int, refId string, options...int) (firestore.Query, error) {
+func BuildQuerySearch(ctx context.Context, collection *firestore.CollectionRef, queries []Query, fields []string, sort map[string]firestore.Direction, limit int, refId string, options ...int) (firestore.Query, error) {
 	q := collection.Query
-	if len(sort) > 0 {
+	if len(queries) > 0 {
 		i := 0
-		for k, v := range sort {
+		var listKey []string
+		for _, p := range queries {
 			if i == 0 {
-				q = collection.OrderBy(k, v)
+				q = collection.Where(p.Path, p.Operator, p.Value)
+				if p.Operator != "==" && !contains(listKey, p.Path){
+					q = q.OrderBy(p.Path, 1)
+					listKey = append(listKey, p.Path)
+				}
 				i++
 				continue
 			}
+			q = q.Where(p.Path, p.Operator, p.Value)
+			if p.Operator != "==" && !contains(listKey, p.Path){
+				q = q.OrderBy(p.Path, 1)
+				listKey = append(listKey, p.Path)
+			}
+		}
+	}
+	if len(sort) > 0 {
+		for k, v := range sort {
 			q = q.OrderBy(k, v)
 		}
 	}
-	var skip = 0
-	if len(options) > 0 && options[0] > 0 {
-		skip = options[0]
-	}
-	if limit != 0 {
-		q = q.Limit(limit).Offset(skip)
-	}
-	if len(queries) > 0 {
-		for _, p := range queries {
-			q = q.Where(p.Key, p.Operator, p.Value)
-		}
-	}
+
+
 	if len(refId) > 0 {
-		_, err := collection.Doc(refId).Get(ctx)
+		lastVisible, err := collection.Doc(refId).Get(ctx)
+
 		if err != nil {
 			return q, fmt.Errorf("failed to retrieve document with id: %s, %v", refId, err)
 		}
-		q = q.StartAfter(refId)
+		q = q.StartAfter(lastVisible)
+	}
+
+	var offset = 0
+	if len(options) > 0 && options[0] > 0 {
+		offset = options[0]
+	}
+
+	if limit != 0 {
+		q = q.Limit(limit).Offset(offset)
 	}
 	if len(fields) > 0 {
 		q = q.Select(fields...)
@@ -195,4 +201,13 @@ func GetSortType(sortType string) firestore.Direction {
 	} else {
 		return firestore.Asc
 	}
+}
+
+func contains(s []string, e string) bool {
+	for _, a := range s {
+		if a == e {
+			return true
+		}
+	}
+	return false
 }

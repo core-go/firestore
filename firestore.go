@@ -40,9 +40,9 @@ func BuildQuery(collection *firestore.CollectionRef, queries []Query, limit int,
 	}
 	for i, p := range queries {
 		if i == 0 {
-			q = collection.Where(p.Key, p.Operator, p.Value)
+			q = collection.Where(p.Path, p.Operator, p.Value)
 		}
-		q = q.Where(p.Key, p.Operator, p.Value)
+		q = q.Where(p.Path, p.Operator, p.Value)
 	}
 	return q
 }
@@ -415,7 +415,7 @@ func GetFirestoreName(modelType reflect.Type, fieldName string) string {
 
 func findId(queries []Query) string {
 	for _, p := range queries {
-		if p.Key == "_id" || p.Key == "" {
+		if p.Path == "_id" || p.Path == "" {
 			return p.Value.(string)
 		}
 	}
@@ -451,7 +451,7 @@ func BuildQueryByIdFromObject(object interface{}, modelType reflect.Type, idInde
 }
 
 func BuildQueryById(id interface{}) (query []Query) {
-	query = []Query{{Key: "_id", Operator: "==", Value: id.(string)}}
+	query = []Query{{Path: "_id", Operator: "==", Value: id.(string)}}
 	return query
 }
 
