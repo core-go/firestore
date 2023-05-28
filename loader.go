@@ -63,12 +63,12 @@ func (s *Loader) Load(ctx context.Context, id interface{}) (interface{}, error) 
 
 func (s *Loader) Get(ctx context.Context, id interface{}, result interface{}) (bool, error) {
 	sid := id.(string)
-	return FindOneAndDecode(ctx, s.Collection, sid, result)
+	return FindOneAndDecodeWithIdIndexAndTracking(ctx, s.Collection, sid, result, s.idIndex, s.createdTimeIndex, s.updatedTimeIndex)
 }
 
 func (s *Loader) LoadAndDecode(ctx context.Context, id interface{}, result interface{}) (bool, error) {
 	sid := id.(string)
-	return FindOneAndDecode(ctx, s.Collection, sid, result)
+	return FindOneAndDecodeWithIdIndexAndTracking(ctx, s.Collection, sid, result, s.idIndex, s.createdTimeIndex, s.updatedTimeIndex)
 }
 
 func (s *Loader) Exist(ctx context.Context, id interface{}) (bool, error) {

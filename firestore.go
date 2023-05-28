@@ -160,11 +160,11 @@ func BindCommonFields(result interface{}, doc *firestore.DocumentSnapshot, idInd
 
 	if createdTimeIndex >= 0 {
 		cv := rv.Field(createdTimeIndex)
-		cv.Set(reflect.ValueOf(doc.CreateTime))
+		cv.Set(reflect.ValueOf(&doc.CreateTime))
 	}
 	if updatedTimeIndex >= 0 {
 		uv := rv.Field(updatedTimeIndex)
-		uv.Set(reflect.ValueOf(doc.UpdateTime))
+		uv.Set(reflect.ValueOf(&doc.UpdateTime))
 	}
 }
 

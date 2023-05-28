@@ -62,11 +62,11 @@ func (s *FirestoreLoader) Load(ctx context.Context, id interface{}) (interface{}
 }
 
 func (s *FirestoreLoader) Get(ctx context.Context, id string, result interface{}) (bool, error) {
-	return FindOneAndDecode(ctx, s.Collection, id, result)
+	return FindOneAndDecodeWithIdIndexAndTracking(ctx, s.Collection, id, result, s.idIndex, s.createdTimeIndex, s.updatedTimeIndex)
 }
 
 func (s *FirestoreLoader) LoadAndDecode(ctx context.Context, id string, result interface{}) (bool, error) {
-	return FindOneAndDecode(ctx, s.Collection, id, result)
+	return FindOneAndDecodeWithIdIndexAndTracking(ctx, s.Collection, id, result, s.idIndex, s.createdTimeIndex, s.updatedTimeIndex)
 }
 
 func (s *FirestoreLoader) Exist(ctx context.Context, id string) (bool, error) {
