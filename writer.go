@@ -31,7 +31,8 @@ func NewWriterWithVersion(client *firestore.Client, collectionName string, model
 }
 
 func (s *Writer) Insert(ctx context.Context, model interface{}) (int64, error) {
-	id := reflect.ValueOf(model).Field(s.idIndex).Interface().(string)
+	mv := reflect.ValueOf(model)
+	id := reflect.Indirect(mv).Field(s.idIndex).Interface().(string)
 	if s.versionIndex >= 0 {
 		return InsertOneWithVersion(ctx, s.Collection, id, model, s.versionIndex)
 	}
@@ -39,7 +40,8 @@ func (s *Writer) Insert(ctx context.Context, model interface{}) (int64, error) {
 }
 
 func (s *Writer) Update(ctx context.Context, model interface{}) (int64, error) {
-	id := reflect.ValueOf(model).Field(s.idIndex).Interface().(string)
+	mv := reflect.ValueOf(model)
+	id := reflect.Indirect(mv).Field(s.idIndex).Interface().(string)
 	if s.versionIndex >= 0 {
 		return UpdateOneWithVersion(ctx, s.Collection, model, s.versionIndex, s.versionField, s.idIndex)
 	}
@@ -56,7 +58,8 @@ func (s *Writer) Patch(ctx context.Context, data map[string]interface{}) (int64,
 }
 
 func (s *Writer) Save(ctx context.Context, model interface{}) (int64, error) {
-	id := reflect.ValueOf(model).Field(s.idIndex).Interface().(string)
+	mv := reflect.ValueOf(model)
+	id := reflect.Indirect(mv).Field(s.idIndex).Interface().(string)
 	if s.versionIndex >= 0 {
 		return SaveOneWithVersion(ctx, s.Collection, id, model, s.versionIndex, s.versionField)
 	}

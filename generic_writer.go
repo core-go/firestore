@@ -1,9 +1,10 @@
 package firestore
 
 import (
-	"cloud.google.com/go/firestore"
 	"context"
 	"reflect"
+
+	"cloud.google.com/go/firestore"
 )
 
 type Repository interface {
@@ -40,7 +41,8 @@ func NewGenericWriterWithVersion(client *firestore.Client, collectionName string
 }
 
 func (s *GenericWriter) Insert(ctx context.Context, model interface{}) (int64, error) {
-	id := reflect.ValueOf(model).Field(s.idIndex).Interface().(string)
+	mv := reflect.ValueOf(model)
+	id := reflect.Indirect(mv).Field(s.idIndex).Interface().(string)
 	if s.versionIndex >= 0 {
 		return InsertOneWithVersion(ctx, s.Collection, id, model, s.versionIndex)
 	}
@@ -48,7 +50,8 @@ func (s *GenericWriter) Insert(ctx context.Context, model interface{}) (int64, e
 }
 
 func (s *GenericWriter) Update(ctx context.Context, model interface{}) (int64, error) {
-	id := reflect.ValueOf(model).Field(s.idIndex).Interface().(string)
+	mv := reflect.ValueOf(model)
+	id := reflect.Indirect(mv).Field(s.idIndex).Interface().(string)
 	if s.versionIndex >= 0 {
 		return UpdateOneWithVersion(ctx, s.Collection, model, s.versionIndex, s.versionField, s.idIndex)
 	}
@@ -65,7 +68,8 @@ func (s *GenericWriter) Patch(ctx context.Context, data map[string]interface{}) 
 }
 
 func (s *GenericWriter) Save(ctx context.Context, model interface{}) (int64, error) {
-	id := reflect.ValueOf(model).Field(s.idIndex).Interface().(string)
+	mv := reflect.ValueOf(model)
+	id := reflect.Indirect(mv).Field(s.idIndex).Interface().(string)
 	if s.versionIndex >= 0 {
 		return SaveOneWithVersion(ctx, s.Collection, id, model, s.versionIndex, s.versionField)
 	}
