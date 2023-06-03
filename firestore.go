@@ -4,10 +4,8 @@ import (
 	"cloud.google.com/go/firestore"
 	"context"
 	"errors"
-	"firebase.google.com/go"
 	"fmt"
 	"google.golang.org/api/iterator"
-	"google.golang.org/api/option"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"log"
@@ -15,109 +13,54 @@ import (
 	"strings"
 )
 
-func Connect(ctx context.Context, credentials []byte) (*firestore.Client, error) {
-	app, er1 := firebase.NewApp(ctx, nil, option.WithCredentialsJSON(credentials))
-	if er1 != nil {
-		log.Fatalf("Could not create admin client: %v", er1)
-		return nil, er1
-	}
-
-	client, er2 := app.Firestore(ctx)
-	if er2 != nil {
-		log.Fatalf("Could not create data operations client: %v", er2)
-		return nil, er2
-	}
-	return client, nil
-}
-
-func BuildQuery(collection *firestore.CollectionRef, queries []Query, limit int, selectFields ...string) firestore.Query {
-	var q firestore.Query
-	if limit != 0 {
-		q = collection.Limit(limit)
-	}
-	if len(queries) == 0 {
-		return collection.Select(selectFields...)
-	}
-	for i, p := range queries {
-		if i == 0 {
-			q = collection.Where(p.Path, p.Operator, p.Value)
+func MakeFirestoreMap(modelType reflect.Type) map[string]string {
+	maps := make(map[string]string)
+	numField := modelType.NumField()
+	for i := 0; i < numField; i++ {
+		field := modelType.Field(i)
+		key1 := field.Name
+		if tag0, ok0 := field.Tag.Lookup("json"); ok0 {
+			if strings.Contains(tag0, ",") {
+				a := strings.Split(tag0, ",")
+				key1 = a[0]
+			} else {
+				key1 = tag0
+			}
 		}
-		q = q.Where(p.Path, p.Operator, p.Value)
-	}
-	return q
-}
-
-func GetDocuments(ctx context.Context, collection *firestore.CollectionRef, where []Query, limit int) *firestore.DocumentIterator {
-	if len(where) > 0 {
-		return BuildQuery(collection, where, limit).Documents(ctx)
-	}
-	if limit != 0 {
-		return collection.Limit(limit).Documents(ctx)
-	}
-	return collection.Documents(ctx)
-}
-
-func BuildObjectToDotNotationUpdate(data interface{}) []firestore.Update {
-	var q []firestore.Update
-	items, _ := Notation(data, SkipEmpty, ".")
-	for i := range items {
-		q = append(q, firestore.Update{Path: items[i].Key, Value: items[i].Value})
-	}
-	return q
-}
-
-func Exist(ctx context.Context, collection *firestore.CollectionRef, docID string) (bool, error) {
-	_, err := collection.Doc(docID).Get(ctx)
-	if err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-func Find(ctx context.Context, collection *firestore.CollectionRef, where []Query, modelType reflect.Type) (interface{}, error) {
-	idx, _, _ := FindIdField(modelType)
-	if idx < 0 {
-		log.Println(modelType.Name() + " repository can't use functions that need Id value (Ex GetById, ExistsById, Save, Update) because don't have any fields of " + modelType.Name() + " struct define _id bson tag.")
-	}
-	return FindWithIdIndexAndTracking(ctx, collection, where, modelType, idx, -1, -1)
-}
-
-func FindWithIdIndex(ctx context.Context, collection *firestore.CollectionRef, where []Query, modelType reflect.Type, idIndex int) (interface{}, error) {
-	return FindWithIdIndexAndTracking(ctx, collection, where, modelType, idIndex, -1, -1)
-}
-
-func FindWithTracking(ctx context.Context, collection *firestore.CollectionRef, where []Query, modelType reflect.Type, createdTimeIndex int, updatedTimeIndex int) (interface{}, error) {
-	idx, _, _ := FindIdField(modelType)
-	if idx < 0 {
-		log.Println(modelType.Name() + " repository can't use functions that need Id value (Ex GetById, ExistsById, Save, Update) because don't have any fields of " + modelType.Name() + " struct define _id bson tag.")
-	}
-	return FindWithIdIndexAndTracking(ctx, collection, where, modelType, idx, createdTimeIndex, updatedTimeIndex)
-}
-
-func FindWithIdIndexAndTracking(ctx context.Context, collection *firestore.CollectionRef, where []Query, modelType reflect.Type, idIndex int, createdTimeIndex int, updatedTimeIndex int) (interface{}, error) {
-	iter := GetDocuments(ctx, collection, where, 0)
-	modelsType := reflect.Zero(reflect.SliceOf(modelType)).Type()
-	arr := reflect.New(modelsType).Interface()
-	for {
-		doc, err := iter.Next()
-		if err == iterator.Done {
-			break
+		if tag, ok := field.Tag.Lookup("firestore"); ok {
+			if tag != "-" {
+				if strings.Contains(tag, ",") {
+					a := strings.Split(tag, ",")
+					if key1 == "-" {
+						key1 = a[0]
+					}
+					maps[key1] = a[0]
+				} else {
+					if key1 == "-" {
+						key1 = tag
+					}
+					maps[key1] = tag
+				}
+			}
+		} else {
+			if key1 == "-" {
+				key1 = field.Name
+			}
+			maps[key1] = key1
 		}
-		if err != nil {
-			return nil, err
-		}
-		result := reflect.New(modelType).Interface()
-		err = doc.DataTo(&result)
-		if err != nil {
-			return nil, err
-		}
-		BindCommonFields(result, doc, idIndex, createdTimeIndex, updatedTimeIndex)
-		//SetValue(result, idIndex, doc.Ref.ID)
-		arr = appendToArray(arr, result)
 	}
-	return arr, nil
+	return maps
 }
-
+func MapToFirestore(json map[string]interface{}, doc *firestore.DocumentSnapshot, maps map[string]string) map[string]interface{} {
+	fs := doc.Data()
+	for k, v := range json {
+		fk, ok := maps[k]
+		if ok {
+			fs[fk] = v
+		}
+	}
+	return fs
+}
 func FindOne(ctx context.Context, collection *firestore.CollectionRef, docID string, modelType reflect.Type) (interface{}, error) {
 	idx, _, _ := FindIdField(modelType)
 	if idx < 0 {
@@ -125,11 +68,9 @@ func FindOne(ctx context.Context, collection *firestore.CollectionRef, docID str
 	}
 	return FindOneWithIdIndexAndTracking(ctx, collection, docID, modelType, idx, -1, -1)
 }
-
 func FindOneWithIdIndex(ctx context.Context, collection *firestore.CollectionRef, docID string, modelType reflect.Type, idIndex int) (interface{}, error) {
 	return FindOneWithIdIndexAndTracking(ctx, collection, docID, modelType, idIndex, -1, -1)
 }
-
 func FindOneWithTracking(ctx context.Context, collection *firestore.CollectionRef, docID string, modelType reflect.Type, createdTimeIndex int, updatedTimeIndex int) (interface{}, error) {
 	idx, _, _ := FindIdField(modelType)
 	if idx < 0 {
@@ -137,37 +78,6 @@ func FindOneWithTracking(ctx context.Context, collection *firestore.CollectionRe
 	}
 	return FindOneWithIdIndexAndTracking(ctx, collection, docID, modelType, idx, createdTimeIndex, updatedTimeIndex)
 }
-
-func FindOneWithIdIndexAndTracking(ctx context.Context, collection *firestore.CollectionRef, docID string, modelType reflect.Type, idIndex int, createdTimeIndex int, updatedTimeIndex int) (interface{}, error) {
-	doc, er1 := collection.Doc(docID).Get(ctx)
-	if er1 != nil {
-		return nil, er1
-	}
-	result := reflect.New(modelType).Interface()
-	er2 := doc.DataTo(&result)
-	if er2 != nil {
-		return nil, er2
-	}
-	BindCommonFields(result, doc, idIndex, createdTimeIndex, updatedTimeIndex)
-	//SetValue(result, idIndex, doc.Ref.ID)
-	return result, nil
-}
-
-func BindCommonFields(result interface{}, doc *firestore.DocumentSnapshot, idIndex int, createdTimeIndex int, updatedTimeIndex int) {
-	rv := reflect.Indirect(reflect.ValueOf(result))
-	fv := rv.Field(idIndex)
-	fv.Set(reflect.ValueOf(doc.Ref.ID))
-
-	if createdTimeIndex >= 0 {
-		cv := rv.Field(createdTimeIndex)
-		cv.Set(reflect.ValueOf(&doc.CreateTime))
-	}
-	if updatedTimeIndex >= 0 {
-		uv := rv.Field(updatedTimeIndex)
-		uv.Set(reflect.ValueOf(&doc.UpdateTime))
-	}
-}
-
 func FindOneAndDecode(ctx context.Context, collection *firestore.CollectionRef, docID string, result interface{}) (bool, error) {
 	modelType := reflect.Indirect(reflect.ValueOf(result)).Type()
 	//modelType := reflect.TypeOf(result)
@@ -177,11 +87,9 @@ func FindOneAndDecode(ctx context.Context, collection *firestore.CollectionRef, 
 	}
 	return FindOneAndDecodeWithIdIndexAndTracking(ctx, collection, docID, result, idx, -1, -1)
 }
-
 func FindOneAndDecodeWithIdIndex(ctx context.Context, collection *firestore.CollectionRef, docID string, result interface{}, idIndex int) (interface{}, error) {
 	return FindOneAndDecodeWithIdIndexAndTracking(ctx, collection, docID, result, idIndex, -1, -1)
 }
-
 func FindOneAndDecodeWithTracking(ctx context.Context, collection *firestore.CollectionRef, docID string, result interface{}, createdTimeIndex int, updatedTimeIndex int) (interface{}, error) {
 	modelType := reflect.TypeOf(result)
 	idx, _, _ := FindIdField(modelType)
@@ -190,20 +98,6 @@ func FindOneAndDecodeWithTracking(ctx context.Context, collection *firestore.Col
 	}
 	return FindOneAndDecodeWithIdIndexAndTracking(ctx, collection, docID, modelType, idx, createdTimeIndex, updatedTimeIndex)
 }
-
-func FindOneAndDecodeWithIdIndexAndTracking(ctx context.Context, collection *firestore.CollectionRef, docID string, result interface{}, idIndex int, createdTimeIndex int, updatedTimeIndex int) (bool, error) {
-	doc, err := collection.Doc(docID).Get(ctx)
-	if err != nil {
-		return false, err
-	}
-	err = doc.DataTo(result)
-	if err != nil {
-		return false, err
-	}
-	BindCommonFields(result, doc, idIndex, createdTimeIndex, updatedTimeIndex)
-	return true, nil
-}
-
 func FindOneMap(ctx context.Context, collection *firestore.CollectionRef, docID string) (bool, map[string]interface{}, error) {
 	doc, err := collection.Doc(docID).Get(ctx)
 	if err != nil {
@@ -221,7 +115,6 @@ func FindOneDoc(ctx context.Context, collection *firestore.CollectionRef, docID 
 func FindOneWithQueries(ctx context.Context, collection *firestore.CollectionRef, where []Query, modelType reflect.Type, createdTimeIndex int, updatedTimeIndex int) (interface{}, error) {
 	return FindOneWithQueriesAndTracking(ctx, collection, where, modelType, -1, -1)
 }
-
 func FindOneWithQueriesAndTracking(ctx context.Context, collection *firestore.CollectionRef, where []Query, modelType reflect.Type, createdTimeIndex int, updatedTimeIndex int) (interface{}, error) {
 	iter := GetDocuments(ctx, collection, where, 1)
 	idx, _, _ := FindIdField(modelType)
@@ -243,11 +136,9 @@ func FindOneWithQueriesAndTracking(ctx context.Context, collection *firestore.Co
 	}
 	return nil, status.Errorf(codes.NotFound, "not found")
 }
-
 func FindByField(ctx context.Context, collection *firestore.CollectionRef, values []string, modelType reflect.Type, jsonName string) (interface{}, []error) {
 	return FindByFieldWithTracking(ctx, collection, values, modelType, jsonName, -1, -1)
 }
-
 func FindByFieldWithTracking(ctx context.Context, collection *firestore.CollectionRef, values []string, modelType reflect.Type, jsonName string, createdTimeIndex int, updatedTimeIndex int) (interface{}, []error) {
 	idx, _, firestoreField := GetFieldByJson(modelType, jsonName)
 	iter := collection.Where(firestoreField, "in", values).Documents(ctx)
@@ -276,11 +167,9 @@ func FindByFieldWithTracking(ctx context.Context, collection *firestore.Collecti
 	// keyFailure := difference(keySuccess, values)
 	return result, failure
 }
-
 func FindAndDecode(ctx context.Context, collection *firestore.CollectionRef, ids []string, result interface{}, jsonField string) ([]string, []string, []error) {
 	return FindAndDecodeWithTracking(ctx, collection, ids, result, jsonField, -1, -1)
 }
-
 func FindAndDecodeWithTracking(ctx context.Context, collection *firestore.CollectionRef, ids []string, result interface{}, jsonField string, createdTimeIndex int, updatedTimeIndex int) ([]string, []string, []error) {
 	var failure []error
 	var keySuccess []string
@@ -320,128 +209,6 @@ func FindAndDecodeWithTracking(ctx context.Context, collection *firestore.Collec
 	result = valueResult.Interface()
 	// keyFailure := difference(keySuccess, ids)
 	return keySuccess, keyFailure, failure
-}
-
-func difference(slice1 []string, slice2 []string) []string {
-	var diff []string
-
-	// Loop two times, first to find slice1 strings not in slice2,
-	// second loop to find slice2 strings not in slice1
-	for i := 0; i < 2; i++ {
-		for _, s1 := range slice1 {
-			found := false
-			for _, s2 := range slice2 {
-				if s1 == s2 {
-					found = true
-					break
-				}
-			}
-			// String not found. We add it to return slice
-			if !found {
-				diff = append(diff, s1)
-			}
-		}
-		// Swap the slices, only if it was the first loop
-		if i == 0 {
-			slice1, slice2 = slice2, slice1
-		}
-	}
-
-	return diff
-}
-
-func FindFieldByName(modelType reflect.Type, fieldName string) (int, string, string) {
-	numField := modelType.NumField()
-	for i := 0; i < numField; i++ {
-		field := modelType.Field(i)
-		if field.Name == fieldName {
-			name1 := fieldName
-			name2 := fieldName
-			tag1, ok1 := field.Tag.Lookup("json")
-			tag2, ok2 := field.Tag.Lookup("firestore")
-			if ok1 {
-				name1 = strings.Split(tag1, ",")[0]
-			}
-			if ok2 {
-				name2 = strings.Split(tag2, ",")[0]
-			}
-			return i, name1, name2
-		}
-	}
-	return -1, fieldName, fieldName
-}
-
-func FindField(modelType reflect.Type, firestoreName string) (int, string) {
-	numField := modelType.NumField()
-	for i := 0; i < numField; i++ {
-		field := modelType.Field(i)
-		if field.Name == firestoreName {
-			firestoreTag := field.Tag.Get("firestore")
-			tags := strings.Split(firestoreTag, ",")
-			for _, tag := range tags {
-				if strings.Compare(strings.TrimSpace(tag), firestoreName) == 0 {
-					return i, field.Name
-				}
-			}
-		}
-	}
-	return -1, ""
-}
-
-func GetFieldByJson(modelType reflect.Type, jsonName string) (int, string, string) {
-	numField := modelType.NumField()
-	for i := 0; i < numField; i++ {
-		field := modelType.Field(i)
-		tag1, ok1 := field.Tag.Lookup("json")
-		if ok1 && strings.Split(tag1, ",")[0] == jsonName {
-			if tag2, ok2 := field.Tag.Lookup("firestore"); ok2 {
-				return i, field.Name, strings.Split(tag2, ",")[0]
-			}
-			return i, field.Name, ""
-		}
-	}
-	return -1, jsonName, jsonName
-}
-
-func GetFirestoreName(modelType reflect.Type, fieldName string) string {
-	field, _ := modelType.FieldByName(fieldName)
-	bsonTag := field.Tag.Get("firestore")
-	tags := strings.Split(bsonTag, ",")
-	if len(tags) > 0 {
-		return tags[0]
-	}
-	return fieldName
-}
-
-func findId(queries []Query) string {
-	for _, p := range queries {
-		if p.Path == "_id" || p.Path == "" {
-			return p.Value.(string)
-		}
-	}
-	return ""
-}
-
-func MapFieldId(value interface{}, fieldNameId string, doc *firestore.DocumentSnapshot) {
-	// fmt.Println(reflect.TypeOf(value))
-	rv := reflect.Indirect(reflect.ValueOf(value))
-	fv := rv.FieldByName(fieldNameId)
-	if fv.IsValid() && fv.CanAddr() { //TODO handle set , now error no set id
-		fv.Set(reflect.ValueOf(doc.Ref.ID))
-	}
-}
-
-// for get all and search
-func appendToArray(arr interface{}, item interface{}) interface{} {
-	arrValue := reflect.ValueOf(arr)
-	elemValue := arrValue.Elem()
-
-	itemValue := reflect.ValueOf(item)
-	if itemValue.Kind() == reflect.Ptr {
-		itemValue = reflect.Indirect(itemValue)
-	}
-	elemValue.Set(reflect.Append(elemValue, itemValue))
-	return arr
 }
 
 // Update
@@ -569,12 +336,6 @@ func UpdateOneWithVersion(ctx context.Context, collection *firestore.CollectionR
 }
 
 func PatchOneWithVersion(ctx context.Context, collection *firestore.CollectionRef, id string, json map[string]interface{}, maps map[string]string, jsonVersion string) (int64, error) {
-	/*
-	id := getIdValueFromMap(json)
-	if len(id) == 0 {
-		return 0, fmt.Errorf("cannot update one an Object that do not have id field")
-	}
-	 */
 	itemExist, doc, err := FindOneDoc(ctx, collection, id)
 	if err != nil {
 		return 0, err
@@ -736,293 +497,4 @@ func PatchOne(ctx context.Context, collection *firestore.CollectionRef, id strin
 		return 0, er2
 	}
 	return 1, nil
-}
-
-func FindIdField(modelType reflect.Type) (int, string, string) {
-	return findBsonField(modelType, "_id")
-}
-func findBsonField(modelType reflect.Type, bsonName string) (int, string, string) {
-	numField := modelType.NumField()
-	for i := 0; i < numField; i++ {
-		field := modelType.Field(i)
-		bsonTag := field.Tag.Get("bson")
-		tags := strings.Split(bsonTag, ",")
-		json := field.Name
-		if tag1, ok1 := field.Tag.Lookup("json"); ok1 {
-			json = strings.Split(tag1, ",")[0]
-		}
-		for _, tag := range tags {
-			if strings.TrimSpace(tag) == bsonName {
-				return i, field.Name, json
-			}
-		}
-	}
-	return -1, "", ""
-}
-func FindFieldName(modelType reflect.Type, firestoreName string) (int, string, string) {
-	numField := modelType.NumField()
-	for i := 0; i < numField; i++ {
-		field := modelType.Field(i)
-		bsonTag := field.Tag.Get("firestore")
-		tags := strings.Split(bsonTag, ",")
-		json := field.Name
-		if tag1, ok1 := field.Tag.Lookup("json"); ok1 {
-			json = strings.Split(tag1, ",")[0]
-		}
-		for _, tag := range tags {
-			if strings.TrimSpace(tag) == firestoreName {
-				return i, field.Name, json
-			}
-		}
-	}
-	return -1, "", ""
-}
-
-// ref : https://stackoverflow.com/questions/46725357/firestore-batch-add-is-not-a-function
-func InsertMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, idName string, models interface{}) (int64, error) {
-	batch := client.Batch()
-	switch reflect.TypeOf(models).Kind() {
-	case reflect.Slice:
-		models_ := reflect.ValueOf(models)
-		for i := 0; i < models_.Len(); i++ {
-			value := models_.Index(i).Interface()
-			ref := collection.NewDoc()
-			if idName != "" {
-				id, _ := getValue(value, idName)
-				if id != nil && len(id.(string)) > 0 {
-					ref = collection.Doc(id.(string))
-				}
-			}
-			batch.Create(ref, value)
-		}
-	}
-	// Commit the batch.
-	writeResult, err := batch.Commit(ctx)
-	if err != nil {
-		// Handle any errors in an appropriate way, such as returning them.
-		log.Printf("An error has occurred: %s", err)
-		return 0, err
-	}
-	// fmt.Println(len(writeResult))
-	return int64(len(writeResult)), nil
-}
-
-func PatchMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, idName string, models interface{}) (int64, error) {
-	batch := client.Batch()
-	switch reflect.TypeOf(models).Kind() {
-	case reflect.Slice:
-		models_ := reflect.ValueOf(models)
-		for i := 0; i < models_.Len(); i++ {
-			value := models_.Index(i).Interface()
-			id, errId := getValue(value, idName)
-			if errId != nil {
-				ref := collection.Doc(id.(string))
-				batch.Set(ref, value)
-			}
-		}
-	}
-	// Commit the batch.
-	writeResult, err := batch.Commit(ctx)
-	if err != nil {
-		// Handle any errors in an appropriate way, such as returning them.
-		log.Printf("An error has occurred: %s", err)
-		return 0, err
-	}
-	// fmt.Println(writeResult)
-	return int64(len(writeResult)), nil
-}
-
-func SaveMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, idName string, models interface{}) (int64, error) {
-	batch := client.Batch()
-	switch reflect.TypeOf(models).Kind() {
-	case reflect.Slice:
-		models_ := reflect.ValueOf(models)
-		for i := 0; i < models_.Len(); i++ {
-			value := models_.Index(i).Interface()
-			id, errId := getValue(value, idName)
-			ref := collection.NewDoc()
-			if errId == nil && len(id.(string)) > 0 {
-				ref = collection.Doc(id.(string))
-				data, _ := ref.Get(ctx)
-				if data != nil || data.Exists() {
-					batch.Set(ref, value)
-					continue
-				}
-			}
-			// fmt.Println("insert id: ", id.(string))
-			batch.Create(ref, value)
-		}
-	}
-	// Commit the batch.
-	writeResult, err := batch.Commit(ctx)
-	if err != nil {
-		// Handle any errors in an appropriate way, such as returning them.
-		log.Printf("An error has occurred: %s", err)
-		return 0, err
-	}
-	// fmt.Println(writeResult)
-	return int64(len(writeResult)), nil
-}
-
-func UpdateMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, idName string, models interface{}) (int64, error) {
-	batch := client.Batch()
-	size := 0
-	switch reflect.TypeOf(models).Kind() {
-	case reflect.Slice:
-		models_ := reflect.ValueOf(models)
-		for i := 0; i < models_.Len(); i++ {
-			value := models_.Index(i).Interface()
-			id, errId := getValue(value, idName)
-			if errId == nil {
-				ref := collection.Doc(id.(string))
-				data, _ := ref.Get(ctx)
-				// fmt.Println(data.Exists())
-				if data == nil || data.Exists() {
-					// fmt.Println("ID", id.(string))
-					batch.Update(ref, BuildObjectToDotNotationUpdate(value))
-					size++
-				}
-			}
-		}
-	}
-	if size == 0 {
-		return 0, nil
-	}
-	// Commit the batch.
-	writeResult, err := batch.Commit(ctx)
-	if err != nil {
-		// Handle any errors in an appropriate way, such as returning them.
-		log.Printf("An error has occurred: %s", err)
-		return 0, err
-	}
-	return int64(len(writeResult)), nil
-}
-
-func initArrayResults(modelsType reflect.Type) interface{} {
-	return reflect.New(modelsType).Interface()
-}
-
-func MapToFirestoreObjects(model interface{}, idName string, modelType reflect.Type) interface{} {
-	var results = initArrayResults(modelType)
-	switch reflect.TypeOf(model).Kind() {
-	case reflect.Slice:
-		values := reflect.ValueOf(model)
-		for i := 0; i < values.Len(); i++ {
-			// fmt.Println(values.Index(i))
-			model := MapToFirestoreObject(values.Index(i).Interface(), idName)
-			results = appendToArray(results, model)
-		}
-	}
-	return results
-}
-
-func MapToFirestoreObject(model interface{}, idName string) interface{} {
-	id, _ := getValue(model, idName)
-	setValue(model, idName, id)
-	return model
-}
-
-func getValue(model interface{}, fieldName string) (interface{}, error) {
-	vo := reflect.Indirect(reflect.ValueOf(model))
-	numField := vo.NumField()
-	for i := 0; i < numField; i++ {
-		if fieldName == vo.Type().Field(i).Name {
-			return reflect.Indirect(vo).FieldByName(fieldName).Interface(), nil
-		}
-	}
-	return nil, fmt.Errorf("Error no found field: " + fieldName)
-}
-
-func setValue(model interface{}, fieldName string, value interface{}) (interface{}, error) {
-	vo := reflect.Indirect(reflect.ValueOf(model))
-	numField := vo.NumField()
-	for i := 0; i < numField; i++ {
-		if fieldName == vo.Type().Field(i).Name {
-			reflect.Indirect(vo).FieldByName(fieldName).Set(reflect.ValueOf(value))
-			return model, nil
-		}
-	}
-	return nil, fmt.Errorf("Error no found field: " + fieldName)
-}
-
-func MapModels(ctx context.Context, models interface{}, mp func(context.Context, interface{}) (interface{}, error)) (interface{}, error) {
-	vo := reflect.Indirect(reflect.ValueOf(models))
-	if vo.Kind() == reflect.Ptr {
-		vo = reflect.Indirect(vo)
-	}
-	if vo.Kind() == reflect.Slice {
-		le := vo.Len()
-		for i := 0; i < le; i++ {
-			x := vo.Index(i)
-			k := x.Kind()
-			if k == reflect.Struct {
-				y := x.Addr().Interface()
-				mp(ctx, y)
-			} else {
-				y := x.Interface()
-				mp(ctx, y)
-			}
-
-		}
-	}
-	return models, nil
-}
-func SetValue(model interface{}, index int, value interface{}) (interface{}, error) {
-	v := reflect.Indirect(reflect.ValueOf(model))
-	if v.Kind() == reflect.Ptr {
-		v = reflect.Indirect(v)
-	}
-
-	v.Field(index).Set(reflect.ValueOf(value))
-	return model, nil
-}
-
-
-func MakeFirestoreMap(modelType reflect.Type) map[string]string {
-	maps := make(map[string]string)
-	numField := modelType.NumField()
-	for i := 0; i < numField; i++ {
-		field := modelType.Field(i)
-		key1 := field.Name
-		if tag0, ok0 := field.Tag.Lookup("json"); ok0 {
-			if strings.Contains(tag0, ",") {
-				a := strings.Split(tag0, ",")
-				key1 = a[0]
-			} else {
-				key1 = tag0
-			}
-		}
-		if tag, ok := field.Tag.Lookup("firestore"); ok {
-			if tag != "-" {
-				if strings.Contains(tag, ",") {
-					a := strings.Split(tag, ",")
-					if key1 == "-" {
-						key1 = a[0]
-					}
-					maps[key1] = a[0]
-				} else {
-					if key1 == "-" {
-						key1 = tag
-					}
-					maps[key1] = tag
-				}
-			}
-		} else {
-			if key1 == "-" {
-				key1 = field.Name
-			}
-			maps[key1] = key1
-		}
-	}
-	return maps
-}
-func MapToFirestore(json map[string]interface{}, doc *firestore.DocumentSnapshot, maps map[string]string) map[string]interface{} {
-	fs := doc.Data()
-	for k, v := range json {
-		fk, ok := maps[k]
-		if ok {
-			fs[fk] = v
-		}
-	}
-	return fs
 }

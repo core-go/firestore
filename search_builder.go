@@ -194,7 +194,20 @@ func GetColumnName(modelType reflect.Type, sortField string) string {
 	}
 	return sortField
 }
-
+func GetFieldByJson(modelType reflect.Type, jsonName string) (int, string, string) {
+	numField := modelType.NumField()
+	for i := 0; i < numField; i++ {
+		field := modelType.Field(i)
+		tag1, ok1 := field.Tag.Lookup("json")
+		if ok1 && strings.Split(tag1, ",")[0] == jsonName {
+			if tag2, ok2 := field.Tag.Lookup("firestore"); ok2 {
+				return i, field.Name, strings.Split(tag2, ",")[0]
+			}
+			return i, field.Name, ""
+		}
+	}
+	return -1, jsonName, jsonName
+}
 func GetSortType(sortType string) firestore.Direction {
 	if sortType == "-" {
 		return firestore.Desc
