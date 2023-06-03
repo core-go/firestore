@@ -62,23 +62,6 @@ func (b *SearchBuilder) Search(ctx context.Context, m interface{}, results inter
 }
 
 func BuildSearchResult(ctx context.Context, collection *firestore.CollectionRef, results interface{}, query []Query, fields []string, sort map[string]firestore.Direction, limit int64, refId string, idIndex int, createdTimeIndex int, updatedTimeIndex int) (string, error) {
-	/*
-		var limit, skip int64
-		if initPageSize > 0 {
-			if pageIndex == 1 {
-				skip = 0
-				limit = initPageSize
-			} else {
-				skip = pageSize*(pageIndex-2) + initPageSize
-				limit = pageSize
-			}
-		} else {
-			skip = pageSize * (pageIndex - 1)
-			limit = pageSize
-		}
-
-		queries, er0 := BuildQuerySearch(ctx, collection, query, fields, sort, int(limit), int(skip), refId)
-	*/
 	var ilimit int
 	ilimit = int(limit)
 
@@ -113,36 +96,24 @@ func BuildSearchResult(ctx context.Context, collection *firestore.CollectionRef,
 
 func BuildQuerySearch(ctx context.Context, collection *firestore.CollectionRef, queries []Query, fields []string, sort map[string]firestore.Direction, limit int, refId string, options ...int) (firestore.Query, error) {
 	q := collection.Query
-	if len(queries) > 0 {
+	if len(sort) > 0 {
 		i := 0
-		var listKey []string
-		for _, p := range queries {
+		for k, v := range sort {
 			if i == 0 {
-				q = collection.Where(p.Path, p.Operator, p.Value)
-				if p.Operator != "==" && !contains(listKey, p.Path){
-					q = q.OrderBy(p.Path, 1)
-					listKey = append(listKey, p.Path)
-				}
+				q = collection.OrderBy(k, v)
 				i++
 				continue
 			}
-			q = q.Where(p.Path, p.Operator, p.Value)
-			if p.Operator != "==" && !contains(listKey, p.Path){
-				q = q.OrderBy(p.Path, 1)
-				listKey = append(listKey, p.Path)
-			}
-		}
-	}
-	if len(sort) > 0 {
-		for k, v := range sort {
 			q = q.OrderBy(k, v)
 		}
 	}
-
-
+	if len(queries) > 0 {
+		for _, p := range queries {
+			q = q.Where(p.Path, p.Operator, p.Value)
+		}
+	}
 	if len(refId) > 0 {
 		lastVisible, err := collection.Doc(refId).Get(ctx)
-
 		if err != nil {
 			return q, fmt.Errorf("failed to retrieve document with id: %s, %v", refId, err)
 		}
