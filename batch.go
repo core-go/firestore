@@ -3,26 +3,18 @@ package firestore
 import (
 	"cloud.google.com/go/firestore"
 	"context"
-	"firebase.google.com/go"
 	"fmt"
-	"google.golang.org/api/option"
 	"log"
 	"reflect"
 )
 
-func Connect(ctx context.Context, credentials []byte) (*firestore.Client, error) {
-	app, er1 := firebase.NewApp(ctx, nil, option.WithCredentialsJSON(credentials))
-	if er1 != nil {
-		log.Fatalf("Could not create admin client: %v", er1)
-		return nil, er1
+func BuildObjectToDotNotationUpdate(data interface{}) []firestore.Update {
+	var q []firestore.Update
+	items, _ := Notation(data, SkipEmpty, ".")
+	for i := range items {
+		q = append(q, firestore.Update{Path: items[i].Key, Value: items[i].Value})
 	}
-
-	client, er2 := app.Firestore(ctx)
-	if er2 != nil {
-		log.Fatalf("Could not create data operations client: %v", er2)
-		return nil, er2
-	}
-	return client, nil
+	return q
 }
 
 // ref : https://stackoverflow.com/questions/46725357/firestore-batch-add-is-not-a-function
