@@ -19,122 +19,127 @@ func BuildObjectToDotNotationUpdate(data interface{}) []firestore.Update {
 
 // ref : https://stackoverflow.com/questions/46725357/firestore-batch-add-is-not-a-function
 func InsertMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, idName string, models interface{}) (int64, error) {
-	batch := client.Batch()
+	count := 0
 	switch reflect.TypeOf(models).Kind() {
 	case reflect.Slice:
-		models_ := reflect.ValueOf(models)
-		for i := 0; i < models_.Len(); i++ {
-			value := models_.Index(i).Interface()
-			ref := collection.NewDoc()
-			if idName != "" {
-				id, _ := getValue(value, idName)
-				if id != nil && len(id.(string)) > 0 {
-					ref = collection.Doc(id.(string))
+		err := client.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+			models_ := reflect.ValueOf(models)
+			for i := 0; i < models_.Len(); i++ {
+				value := models_.Index(i).Interface()
+				ref := collection.NewDoc()
+				if idName != "" {
+					id, _ := getValue(value, idName)
+					if id != nil && len(id.(string)) > 0 {
+						ref = collection.Doc(id.(string))
+					}
 				}
+				if err := tx.Set(ref, modelToMap(value), firestore.MergeAll) ; err != nil {
+					return err
+				}
+				count++
 			}
-			batch.Create(ref, value)
+			return nil
+		})
+		if err != nil {
+			log.Printf("An error has occurred: %s", err)
+			return -1 , err
 		}
 	}
-	// Commit the batch.
-	writeResult, err := batch.Commit(ctx)
-	if err != nil {
-		// Handle any errors in an appropriate way, such as returning them.
-		log.Printf("An error has occurred: %s", err)
-		return 0, err
-	}
-	// fmt.Println(len(writeResult))
-	return int64(len(writeResult)), nil
+	return int64(count), nil
 }
 
 func PatchMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, idName string, models interface{}) (int64, error) {
-	batch := client.Batch()
+	count := 0
 	switch reflect.TypeOf(models).Kind() {
 	case reflect.Slice:
-		models_ := reflect.ValueOf(models)
-		for i := 0; i < models_.Len(); i++ {
-			value := models_.Index(i).Interface()
-			id, errId := getValue(value, idName)
-			if errId != nil {
-				ref := collection.Doc(id.(string))
-				batch.Set(ref, value)
+		err := client.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+			models_ := reflect.ValueOf(models)
+			for i := 0; i < models_.Len(); i++ {
+				value := models_.Index(i).Interface()
+				id, errId := getValue(value, idName)
+				if errId != nil {
+					ref := collection.Doc(id.(string))
+					if err := tx.Set(ref, modelToMap(value), firestore.MergeAll) ; err != nil {
+						return err
+					}
+					count++
+				}
 			}
+			return nil
+		})
+		if err != nil {
+			log.Printf("An error has occurred: %s", err)
+			return 0, err
 		}
 	}
-	// Commit the batch.
-	writeResult, err := batch.Commit(ctx)
-	if err != nil {
-		// Handle any errors in an appropriate way, such as returning them.
-		log.Printf("An error has occurred: %s", err)
-		return 0, err
-	}
-	// fmt.Println(writeResult)
-	return int64(len(writeResult)), nil
+	return int64(count), nil
 }
 
 func SaveMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, idName string, models interface{}) (int64, error) {
-	batch := client.Batch()
+	count := 0
 	switch reflect.TypeOf(models).Kind() {
 	case reflect.Slice:
-		models_ := reflect.ValueOf(models)
-		for i := 0; i < models_.Len(); i++ {
-			value := models_.Index(i).Interface()
-			id, errId := getValue(value, idName)
-			ref := collection.NewDoc()
-			if errId == nil && len(id.(string)) > 0 {
-				ref = collection.Doc(id.(string))
-				data, _ := ref.Get(ctx)
-				if data != nil || data.Exists() {
-					batch.Set(ref, value)
-					continue
+		err := client.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+			models_ := reflect.ValueOf(models)
+			for i := 0; i < models_.Len(); i++ {
+				value := models_.Index(i).Interface()
+				id, errId := getValue(value, idName)
+				ref := collection.NewDoc()
+				if errId == nil && len(id.(string)) > 0 {
+					ref = collection.Doc(id.(string))
+					data, _ := ref.Get(ctx)
+					if data != nil || data.Exists() {
+						tx.Set(ref, value)
+						continue
+					}
 				}
+				// fmt.Println("insert id: ", id.(string))
+				tx.Create(ref, value)
 			}
-			// fmt.Println("insert id: ", id.(string))
-			batch.Create(ref, value)
+			return nil
+		})
+		if err != nil {
+			// Handle any errors in an appropriate way, such as returning them.
+			log.Printf("An error has occurred: %s", err)
+			return 0, err
 		}
 	}
-	// Commit the batch.
-	writeResult, err := batch.Commit(ctx)
-	if err != nil {
-		// Handle any errors in an appropriate way, such as returning them.
-		log.Printf("An error has occurred: %s", err)
-		return 0, err
-	}
-	// fmt.Println(writeResult)
-	return int64(len(writeResult)), nil
+
+	return int64(count), nil
 }
 
 func UpdateMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, idName string, models interface{}) (int64, error) {
-	batch := client.Batch()
 	size := 0
 	switch reflect.TypeOf(models).Kind() {
 	case reflect.Slice:
-		models_ := reflect.ValueOf(models)
-		for i := 0; i < models_.Len(); i++ {
-			value := models_.Index(i).Interface()
-			id, errId := getValue(value, idName)
-			if errId == nil {
-				ref := collection.Doc(id.(string))
-				data, _ := ref.Get(ctx)
-				// fmt.Println(data.Exists())
-				if data == nil || data.Exists() {
-					// fmt.Println("ID", id.(string))
-					batch.Update(ref, BuildObjectToDotNotationUpdate(value))
-					size++
+		err := client.RunTransaction(ctx, func(ctx context.Context, tx *firestore.Transaction) error {
+			models_ := reflect.ValueOf(models)
+			for i := 0; i < models_.Len(); i++ {
+				value := models_.Index(i).Interface()
+				id, errId := getValue(value, idName)
+				if errId == nil {
+					ref := collection.Doc(id.(string))
+					data, _ := ref.Get(ctx)
+					// fmt.Println(data.Exists())
+					if data == nil || data.Exists() {
+						// fmt.Println("ID", id.(string))
+						tx.Update(ref, BuildObjectToDotNotationUpdate(value))
+						size++
+					}
 				}
 			}
+			return nil
+		})
+		if size == 0 {
+			return 0, nil
 		}
+		if err != nil {
+			log.Printf("An error has occurred: %s", err)
+			return 0, err
+		}
+
 	}
-	if size == 0 {
-		return 0, nil
-	}
-	// Commit the batch.
-	writeResult, err := batch.Commit(ctx)
-	if err != nil {
-		// Handle any errors in an appropriate way, such as returning them.
-		log.Printf("An error has occurred: %s", err)
-		return 0, err
-	}
-	return int64(len(writeResult)), nil
+	return int64(size), nil
 }
 
 func initArrayResults(modelsType reflect.Type) interface{} {
@@ -205,4 +210,23 @@ func MapModels(ctx context.Context, models interface{}, mp func(context.Context,
 		}
 	}
 	return models, nil
+}
+
+func modelToMap(input interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	t := reflect.TypeOf(input)
+	v := reflect.ValueOf(input)
+
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		fieldValue := v.Field(i).Interface()
+
+		tagName := field.Tag.Get("firestore")
+		if tagName == "" {
+			tagName = field.Name
+		}
+		result[tagName] = fieldValue
+	}
+	return result
 }
