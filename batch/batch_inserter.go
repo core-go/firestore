@@ -1,4 +1,4 @@
-package firestore
+package batch
 
 import (
 	"cloud.google.com/go/firestore"
@@ -6,7 +6,7 @@ import (
 	"reflect"
 )
 
-type BatchWriter struct {
+type BatchInserter struct {
 	client     *firestore.Client
 	collection *firestore.CollectionRef
 	IdName     string
@@ -15,7 +15,7 @@ type BatchWriter struct {
 	Map        func(ctx context.Context, model interface{}) (interface{}, error)
 }
 
-func NewBatchWriterWithIdName(client *firestore.Client, collectionName string, modelType reflect.Type, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *BatchWriter {
+func NewBatchInserterWithIdName(client *firestore.Client, collectionName string, modelType reflect.Type, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *BatchInserter {
 	if len(fieldName) == 0 {
 		_, idName, _ := FindIdField(modelType)
 		fieldName = idName
@@ -26,12 +26,14 @@ func NewBatchWriterWithIdName(client *firestore.Client, collectionName string, m
 	}
 	modelsType := reflect.Zero(reflect.SliceOf(modelType)).Type()
 	collection := client.Collection(collectionName)
-	return &BatchWriter{client: client, collection: collection, IdName: fieldName, modelType: modelType, modelsType: modelsType, Map: mp}
+	return &BatchInserter{client: client, collection: collection, IdName: fieldName, modelType: modelType, modelsType: modelsType, Map: mp}
 }
-func NewBatchWriter(client *firestore.Client, collectionName string, modelType reflect.Type, options ...func(context.Context, interface{}) (interface{}, error)) *BatchWriter {
-	return NewBatchWriterWithIdName(client, collectionName, modelType, "", options...)
+
+func NewBatchInserter(client *firestore.Client, collectionName string, modelType reflect.Type, options ...func(context.Context, interface{}) (interface{}, error)) *BatchInserter {
+	return NewBatchInserterWithIdName(client, collectionName, modelType, "", options...)
 }
-func (w *BatchWriter) Write(ctx context.Context, models interface{}) ([]int, []int, error) {
+
+func (w *BatchInserter) Write(ctx context.Context, models interface{}) ([]int, []int, error) {
 	successIndices := make([]int, 0)
 	failIndices := make([]int, 0)
 
@@ -42,10 +44,10 @@ func (w *BatchWriter) Write(ctx context.Context, models interface{}) ([]int, []i
 		if er0 != nil {
 			err = er0
 		} else {
-			_, err = SaveMany(ctx, w.collection, w.client, w.IdName, m2)
+			_, err = InsertMany(ctx, w.collection, w.client, w.IdName, m2)
 		}
 	} else {
-		_, err = SaveMany(ctx, w.collection, w.client, w.IdName, models)
+		_, err = InsertMany(ctx, w.collection, w.client, w.IdName, models)
 	}
 
 	if err == nil {

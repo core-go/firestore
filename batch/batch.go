@@ -1,4 +1,4 @@
-package firestore
+package batch
 
 import (
 	"cloud.google.com/go/firestore"

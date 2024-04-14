@@ -1,8 +1,9 @@
-package firestore
+package passcode
 
 import (
 	"cloud.google.com/go/firestore"
 	"context"
+	"strings"
 	"time"
 )
 
@@ -57,5 +58,15 @@ func (s *PasscodeRepository) Load(ctx context.Context, id string) (string, time.
 }
 
 func (s *PasscodeRepository) Delete(ctx context.Context, id string) (int64, error) {
-	return DeleteOne(ctx, s.collection, id)
+	return deleteOne(ctx, s.collection, id)
+}
+func deleteOne(ctx context.Context, collection *firestore.CollectionRef, docID string) (int64, error) {
+	_, err := collection.Doc(docID).Delete(ctx, firestore.Exists)
+	if err != nil {
+		if strings.Contains(err.Error(), "NotFound") {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return 1, err
 }
