@@ -1,4 +1,4 @@
-package query
+package builder
 
 import (
 	f "github.com/core-go/firestore"
@@ -8,15 +8,21 @@ import (
 	"strings"
 )
 
-type Builder struct {
+type Builder[F any] struct {
 	ModelType reflect.Type
 }
 
-func NewBuilder(resultModelType reflect.Type) *Builder {
-	return &Builder{ModelType: resultModelType}
+func NewBuilder[F any](resultModelType reflect.Type) *Builder[F] {
+	return &Builder[F]{ModelType: resultModelType}
 }
-func (b *Builder) BuildQuery(sm interface{}) ([]f.Query, []string) {
-	return BuildQueryByType(sm, b.ModelType)
+func UseQuery[T any, F any]() func(F) ([]f.Query, []string) {
+	var t T
+	resultModelType := reflect.TypeOf(t)
+	b := NewBuilder[F](resultModelType)
+	return b.BuildQuery
+}
+func (b *Builder[F]) BuildQuery(filter F) ([]f.Query, []string) {
+	return BuildQueryByType(filter, b.ModelType)
 }
 
 func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, []string) {
@@ -74,7 +80,9 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 					} else if i == -1 {
 						columnName = key
 					}
-					fields = append(fields, columnName)
+					if len(columnName) > 0 && columnName != "-" {
+						fields = append(fields, columnName)
+					}
 				}
 			}
 			if len(v.Q) > 0 {
