@@ -20,6 +20,9 @@ type Inserter[T any] struct {
 func NewInserterWithIdName[T any](client *firestore.Client, collectionName string, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *Inserter[T] {
 	var t T
 	modelType := reflect.TypeOf(t)
+	if modelType.Kind() == reflect.Ptr {
+		modelType = modelType.Elem()
+	}
 	var idx int
 	if len(fieldName) == 0 {
 		idx, fieldName, _ = fs.FindIdField(modelType)

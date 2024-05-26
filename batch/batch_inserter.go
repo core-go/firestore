@@ -44,10 +44,10 @@ func (w *BatchInserter) Write(ctx context.Context, models interface{}) ([]int, [
 		if er0 != nil {
 			err = er0
 		} else {
-			_, err = InsertMany(ctx, w.collection, w.client, w.IdName, m2)
+			_, err = InsertMany(ctx, w.collection, w.client, m2, w.IdName)
 		}
 	} else {
-		_, err = InsertMany(ctx, w.collection, w.client, w.IdName, models)
+		_, err = InsertMany(ctx, w.collection, w.client, models, w.IdName)
 	}
 
 	if err == nil {

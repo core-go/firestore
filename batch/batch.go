@@ -18,7 +18,7 @@ func BuildObjectToDotNotationUpdate(data interface{}) []firestore.Update {
 }
 
 // ref : https://stackoverflow.com/questions/46725357/firestore-batch-add-is-not-a-function
-func InsertMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, idName string, models interface{}) (int64, error) {
+func InsertMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, models interface{}, idName string) (int64, error) {
 	count := 0
 	switch reflect.TypeOf(models).Kind() {
 	case reflect.Slice:
@@ -33,7 +33,7 @@ func InsertMany(ctx context.Context, collection *firestore.CollectionRef, client
 						ref = collection.Doc(id.(string))
 					}
 				}
-				if err := tx.Set(ref, modelToMap(value), firestore.MergeAll) ; err != nil {
+				if err := tx.Set(ref, modelToMap(value), firestore.MergeAll); err != nil {
 					return err
 				}
 				count++
@@ -42,7 +42,7 @@ func InsertMany(ctx context.Context, collection *firestore.CollectionRef, client
 		})
 		if err != nil {
 			log.Printf("An error has occurred: %s", err)
-			return -1 , err
+			return -1, err
 		}
 	}
 	return int64(count), nil
@@ -59,7 +59,7 @@ func PatchMany(ctx context.Context, collection *firestore.CollectionRef, client 
 				id, errId := getValue(value, idName)
 				if errId != nil {
 					ref := collection.Doc(id.(string))
-					if err := tx.Set(ref, modelToMap(value), firestore.MergeAll) ; err != nil {
+					if err := tx.Set(ref, modelToMap(value), firestore.MergeAll); err != nil {
 						return err
 					}
 					count++
@@ -75,7 +75,7 @@ func PatchMany(ctx context.Context, collection *firestore.CollectionRef, client 
 	return int64(count), nil
 }
 
-func SaveMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, idName string, models interface{}) (int64, error) {
+func SaveMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, models interface{}, idName string) (int64, error) {
 	count := 0
 	switch reflect.TypeOf(models).Kind() {
 	case reflect.Slice:
@@ -108,7 +108,7 @@ func SaveMany(ctx context.Context, collection *firestore.CollectionRef, client *
 	return int64(count), nil
 }
 
-func UpdateMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, idName string, models interface{}) (int64, error) {
+func UpdateMany(ctx context.Context, collection *firestore.CollectionRef, client *firestore.Client, models interface{}, idName string) (int64, error) {
 	size := 0
 	switch reflect.TypeOf(models).Kind() {
 	case reflect.Slice:

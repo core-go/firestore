@@ -12,8 +12,8 @@ type StreamBatchWriter struct {
 	IdName     string
 	modelType  reflect.Type
 	modelsType reflect.Type
-	batch       []interface{}
-	batchSize    int
+	batch      []interface{}
+	batchSize  int
 	Map        func(ctx context.Context, model interface{}) (interface{}, error)
 }
 
@@ -66,10 +66,10 @@ func (w *StreamBatchWriter) flush(ctx context.Context, models interface{}) ([]in
 		if er0 != nil {
 			err = er0
 		} else {
-			_, err = SaveMany(ctx, w.collection, w.client, w.IdName, m2)
+			_, err = SaveMany(ctx, w.collection, w.client, m2, w.IdName)
 		}
 	} else {
-		_, err = SaveMany(ctx, w.collection, w.client, w.IdName, models)
+		_, err = SaveMany(ctx, w.collection, w.client, models, w.IdName)
 	}
 
 	if err == nil {

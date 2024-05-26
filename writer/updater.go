@@ -21,6 +21,9 @@ func NewUpdaterWithIdName[T any](client *firestore.Client, collectionName string
 	var idx int
 	var t T
 	modelType := reflect.TypeOf(t)
+	if modelType.Kind() == reflect.Ptr {
+		modelType = modelType.Elem()
+	}
 	if len(fieldName) == 0 {
 		idx, fieldName, _ = fs.FindIdField(modelType)
 		if idx < 0 {
