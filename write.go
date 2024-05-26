@@ -102,7 +102,7 @@ func FindOneMap(ctx context.Context, collection *firestore.CollectionRef, docID 
 	return true, doc.Data(), nil
 }
 func UpdateOneWithVersion(ctx context.Context, collection *firestore.CollectionRef, model interface{}, versionIndex int, versionFieldName string, idIndex int) (int64, error) {
-	id := getIdValueFromModel(model, idIndex)
+	id := GetIdValueFromModel(model, idIndex)
 	if len(id) == 0 {
 		return 0, fmt.Errorf("cannot update one an Object that do not have id field")
 	}
@@ -158,7 +158,7 @@ func PatchOne(ctx context.Context, collection *firestore.CollectionRef, id strin
 	}
 	docRef := collection.Doc(id)
 	doc, er1 := docRef.Get(ctx)
-	if er1 != nil{
+	if er1 != nil {
 		return -1, er1
 	}
 	fs := MapToFirestore(json, doc, maps)

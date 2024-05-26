@@ -7,7 +7,7 @@ import (
 	"reflect"
 )
 
-func getIdValueFromModel(model interface{}, idIndex int) string {
+func GetIdValueFromModel(model interface{}, idIndex int) string {
 	if id, exist := getFieldValueAtIndex(model, idIndex).(string); exist {
 		return id
 	}

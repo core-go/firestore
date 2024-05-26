@@ -1,10 +1,12 @@
-package firestore
+package writer
 
 import (
 	"cloud.google.com/go/firestore"
 	"context"
 	"log"
 	"reflect"
+
+	fs "github.com/core-go/firestore"
 )
 
 type Inserter struct {
@@ -20,12 +22,12 @@ type Inserter struct {
 func NewInserterWithIdName(client *firestore.Client, collectionName string, modelType reflect.Type, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *Inserter {
 	var idx int
 	if len(fieldName) == 0 {
-		idx, fieldName, _ = FindIdField(modelType)
+		idx, fieldName, _ = fs.FindIdField(modelType)
 		if idx < 0 {
 			log.Println("Require Id value (Ex Load, Exist, Save, Update) because don't have any fields of " + modelType.Name() + " struct define _id bson tag.")
 		}
 	} else {
-		idx, _, _ = FindFieldByName(modelType, fieldName)
+		idx, _, _ = fs.FindFieldByName(modelType, fieldName)
 	}
 
 	var mp func(context.Context, interface{}) (interface{}, error)
@@ -47,7 +49,7 @@ func (w *Inserter) Write(ctx context.Context, model interface{}) error {
 		if er0 != nil {
 			return er0
 		}
-		return Insert(ctx, w.collection, w.idx, m2)
+		return fs.Insert(ctx, w.collection, w.idx, m2)
 	}
-	return Insert(ctx, w.collection, w.idx, model)
+	return fs.Insert(ctx, w.collection, w.idx, model)
 }

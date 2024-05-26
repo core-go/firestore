@@ -1,10 +1,12 @@
-package firestore
+package writer
 
 import (
 	"cloud.google.com/go/firestore"
 	"context"
 	"log"
 	"reflect"
+
+	fs "github.com/core-go/firestore"
 )
 
 type FirestoreWriter struct {
@@ -20,12 +22,12 @@ type FirestoreWriter struct {
 func NewFirestoreWriterWithId(client *firestore.Client, collectionName string, modelType reflect.Type, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *FirestoreWriter {
 	var idx int
 	if len(fieldName) == 0 {
-		idx, fieldName, _ = FindIdField(modelType)
+		idx, fieldName, _ = fs.FindIdField(modelType)
 		if idx < 0 {
 			log.Println("Require Id value (Ex Load, Exist, Update, Save) because don't have any fields of " + modelType.Name() + " struct define _id bson tag.")
 		}
 	} else {
-		idx, _, _ = FindFieldByName(modelType, fieldName)
+		idx, _, _ = fs.FindFieldByName(modelType, fieldName)
 	}
 
 	var mp func(context.Context, interface{}) (interface{}, error)
@@ -42,7 +44,7 @@ func NewFirestoreWriter(client *firestore.Client, collectionName string, modelTy
 }
 
 func (w *FirestoreWriter) Write(ctx context.Context, model interface{}) error {
-	id := getIdValueFromModel(model, w.idx)
+	id := fs.GetIdValueFromModel(model, w.idx)
 	if w.Map != nil {
 		m2, er0 := w.Map(ctx, model)
 		if er0 != nil {
@@ -53,7 +55,7 @@ func (w *FirestoreWriter) Write(ctx context.Context, model interface{}) error {
 			_, er1 := doc.Create(ctx, m2)
 			return er1
 		}
-		_, er1 := UpdateOne(ctx, w.collection, id, m2)
+		_, er1 := fs.UpdateOne(ctx, w.collection, id, m2)
 		return er1
 	}
 	if len(id) == 0 {
@@ -61,6 +63,6 @@ func (w *FirestoreWriter) Write(ctx context.Context, model interface{}) error {
 		_, er2 := doc.Create(ctx, model)
 		return er2
 	}
-	_, er2 := UpdateOne(ctx, w.collection, id, model)
+	_, er2 := fs.UpdateOne(ctx, w.collection, id, model)
 	return er2
 }
