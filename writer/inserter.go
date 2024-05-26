@@ -9,17 +9,17 @@ import (
 	fs "github.com/core-go/firestore"
 )
 
-type Inserter struct {
+type Inserter[T any] struct {
 	client     *firestore.Client
 	collection *firestore.CollectionRef
 	IdName     string
 	idx        int
-	modelType  reflect.Type
-	modelsType reflect.Type
 	Map        func(ctx context.Context, model interface{}) (interface{}, error)
 }
 
-func NewInserterWithIdName(client *firestore.Client, collectionName string, modelType reflect.Type, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *Inserter {
+func NewInserterWithIdName[T any](client *firestore.Client, collectionName string, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *Inserter[T] {
+	var t T
+	modelType := reflect.TypeOf(t)
 	var idx int
 	if len(fieldName) == 0 {
 		idx, fieldName, _ = fs.FindIdField(modelType)
@@ -34,16 +34,15 @@ func NewInserterWithIdName(client *firestore.Client, collectionName string, mode
 	if len(options) >= 1 {
 		mp = options[0]
 	}
-	modelsType := reflect.Zero(reflect.SliceOf(modelType)).Type()
 	collection := client.Collection(collectionName)
-	return &Inserter{client: client, collection: collection, IdName: fieldName, idx: idx, modelType: modelType, modelsType: modelsType, Map: mp}
+	return &Inserter[T]{client: client, collection: collection, IdName: fieldName, idx: idx, Map: mp}
 }
 
-func NewInserter(client *firestore.Client, collectionName string, modelType reflect.Type, options ...func(context.Context, interface{}) (interface{}, error)) *Inserter {
-	return NewInserterWithIdName(client, collectionName, modelType, "", options...)
+func NewInserter[T any](client *firestore.Client, collectionName string, options ...func(context.Context, interface{}) (interface{}, error)) *Inserter[T] {
+	return NewInserterWithIdName[T](client, collectionName, "", options...)
 }
 
-func (w *Inserter) Write(ctx context.Context, model interface{}) error {
+func (w *Inserter[T]) Write(ctx context.Context, model T) error {
 	if w.Map != nil {
 		m2, er0 := w.Map(ctx, model)
 		if er0 != nil {

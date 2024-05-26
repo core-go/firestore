@@ -9,17 +9,17 @@ import (
 	fs "github.com/core-go/firestore"
 )
 
-type FirestoreWriter struct {
+type FirestoreWriter[T any] struct {
 	client     *firestore.Client
 	collection *firestore.CollectionRef
 	IdName     string
 	idx        int
-	modelType  reflect.Type
-	modelsType reflect.Type
 	Map        func(ctx context.Context, model interface{}) (interface{}, error)
 }
 
-func NewFirestoreWriterWithId(client *firestore.Client, collectionName string, modelType reflect.Type, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *FirestoreWriter {
+func NewFirestoreWriterWithId[T any](client *firestore.Client, collectionName string, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *FirestoreWriter[T] {
+	var t T
+	modelType := reflect.TypeOf(t)
 	var idx int
 	if len(fieldName) == 0 {
 		idx, fieldName, _ = fs.FindIdField(modelType)
@@ -34,16 +34,15 @@ func NewFirestoreWriterWithId(client *firestore.Client, collectionName string, m
 	if len(options) >= 1 {
 		mp = options[0]
 	}
-	modelsType := reflect.Zero(reflect.SliceOf(modelType)).Type()
 	collection := client.Collection(collectionName)
-	return &FirestoreWriter{client: client, collection: collection, IdName: fieldName, idx: idx, modelType: modelType, modelsType: modelsType, Map: mp}
+	return &FirestoreWriter[T]{client: client, collection: collection, IdName: fieldName, idx: idx, Map: mp}
 }
 
-func NewFirestoreWriter(client *firestore.Client, collectionName string, modelType reflect.Type, options ...func(context.Context, interface{}) (interface{}, error)) *FirestoreWriter {
-	return NewFirestoreWriterWithId(client, collectionName, modelType, "", options...)
+func NewFirestoreWriter[T any](client *firestore.Client, collectionName string, options ...func(context.Context, interface{}) (interface{}, error)) *FirestoreWriter[T] {
+	return NewFirestoreWriterWithId[T](client, collectionName, "", options...)
 }
 
-func (w *FirestoreWriter) Write(ctx context.Context, model interface{}) error {
+func (w *FirestoreWriter[T]) Write(ctx context.Context, model T) error {
 	id := fs.GetIdValueFromModel(model, w.idx)
 	if w.Map != nil {
 		m2, er0 := w.Map(ctx, model)
