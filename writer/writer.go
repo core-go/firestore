@@ -9,7 +9,7 @@ import (
 	fs "github.com/core-go/firestore"
 )
 
-type FirestoreWriter[T any] struct {
+type Writer[T any] struct {
 	client     *firestore.Client
 	collection *firestore.CollectionRef
 	IdName     string
@@ -17,7 +17,7 @@ type FirestoreWriter[T any] struct {
 	Map        func(ctx context.Context, model interface{}) (interface{}, error)
 }
 
-func NewFirestoreWriterWithId[T any](client *firestore.Client, collectionName string, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *FirestoreWriter[T] {
+func NewWriterWithId[T any](client *firestore.Client, collectionName string, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *Writer[T] {
 	var t T
 	modelType := reflect.TypeOf(t)
 	if modelType.Kind() == reflect.Ptr {
@@ -38,14 +38,14 @@ func NewFirestoreWriterWithId[T any](client *firestore.Client, collectionName st
 		mp = options[0]
 	}
 	collection := client.Collection(collectionName)
-	return &FirestoreWriter[T]{client: client, collection: collection, IdName: fieldName, idx: idx, Map: mp}
+	return &Writer[T]{client: client, collection: collection, IdName: fieldName, idx: idx, Map: mp}
 }
 
-func NewFirestoreWriter[T any](client *firestore.Client, collectionName string, options ...func(context.Context, interface{}) (interface{}, error)) *FirestoreWriter[T] {
-	return NewFirestoreWriterWithId[T](client, collectionName, "", options...)
+func NewWriter[T any](client *firestore.Client, collectionName string, options ...func(context.Context, interface{}) (interface{}, error)) *Writer[T] {
+	return NewWriterWithId[T](client, collectionName, "", options...)
 }
 
-func (w *FirestoreWriter[T]) Write(ctx context.Context, model T) error {
+func (w *Writer[T]) Write(ctx context.Context, model T) error {
 	id := fs.GetIdValueFromModel(model, w.idx)
 	if w.Map != nil {
 		m2, er0 := w.Map(ctx, model)

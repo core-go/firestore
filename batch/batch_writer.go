@@ -6,16 +6,25 @@ import (
 	"reflect"
 )
 
-type BatchWriter struct {
+type BatchWriter[T any] struct {
 	client     *firestore.Client
 	collection *firestore.CollectionRef
-	IdName     string
-	modelType  reflect.Type
-	modelsType reflect.Type
+	Idx        int
 	Map        func(ctx context.Context, model interface{}) (interface{}, error)
 }
 
-func NewBatchWriterWithIdName(client *firestore.Client, collectionName string, modelType reflect.Type, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *BatchWriter {
+func NewBatchWriterWithIdName[T any](client *firestore.Client, collectionName string, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *BatchWriter[T] {
+	var t T
+	modelType := reflect.TypeOf(t)
+	if modelType.Kind() == reflect.Ptr {
+		modelType = modelType.Elem()
+	}
+	var idx int
+	if len(fieldName) == 0 {
+		idx, _, _ = FindIdField(modelType)
+	} else {
+		idx, _, _ = FindFieldByName(modelType, fieldName)
+	}
 	if len(fieldName) == 0 {
 		_, idName, _ := FindIdField(modelType)
 		fieldName = idName
@@ -24,40 +33,21 @@ func NewBatchWriterWithIdName(client *firestore.Client, collectionName string, m
 	if len(options) >= 1 {
 		mp = options[0]
 	}
-	modelsType := reflect.Zero(reflect.SliceOf(modelType)).Type()
 	collection := client.Collection(collectionName)
-	return &BatchWriter{client: client, collection: collection, IdName: fieldName, modelType: modelType, modelsType: modelsType, Map: mp}
+	return &BatchWriter[T]{client: client, collection: collection, Idx: idx, Map: mp}
 }
-func NewBatchWriter(client *firestore.Client, collectionName string, modelType reflect.Type, options ...func(context.Context, interface{}) (interface{}, error)) *BatchWriter {
-	return NewBatchWriterWithIdName(client, collectionName, modelType, "", options...)
+func NewBatchWriter[T any](client *firestore.Client, collectionName string, options ...func(context.Context, interface{}) (interface{}, error)) *BatchWriter[T] {
+	return NewBatchWriterWithIdName[T](client, collectionName, "", options...)
 }
-func (w *BatchWriter) Write(ctx context.Context, models interface{}) ([]int, []int, error) {
-	successIndices := make([]int, 0)
-	failIndices := make([]int, 0)
-
-	s := reflect.ValueOf(models)
-	var err error
+func (w *BatchWriter[T]) Write(ctx context.Context, models []T) (int64, error) {
 	if w.Map != nil {
-		m2, er0 := MapModels(ctx, models, w.Map)
+		_, er0 := MapModels(ctx, models, w.Map)
 		if er0 != nil {
-			err = er0
+			return 0, er0
 		} else {
-			_, err = SaveMany(ctx, w.collection, w.client, m2, w.IdName)
+			return SaveMany(ctx, w.client, w.collection, models, w.Idx)
 		}
 	} else {
-		_, err = SaveMany(ctx, w.collection, w.client, models, w.IdName)
+		return SaveMany(ctx, w.client, w.collection, models, w.Idx)
 	}
-
-	if err == nil {
-		// Return full success
-		for i := 0; i < s.Len(); i++ {
-			successIndices = append(successIndices, i)
-		}
-		return successIndices, failIndices, err
-	}
-	//fail
-	for i := 0; i < s.Len(); i++ {
-		failIndices = append(failIndices, i)
-	}
-	return successIndices, failIndices, nil
 }

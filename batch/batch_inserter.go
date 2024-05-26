@@ -6,16 +6,26 @@ import (
 	"reflect"
 )
 
-type BatchInserter struct {
+type BatchInserter[T any] struct {
 	client     *firestore.Client
 	collection *firestore.CollectionRef
-	IdName     string
-	modelType  reflect.Type
+	Idx        int
 	modelsType reflect.Type
 	Map        func(ctx context.Context, model interface{}) (interface{}, error)
 }
 
-func NewBatchInserterWithIdName(client *firestore.Client, collectionName string, modelType reflect.Type, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *BatchInserter {
+func NewBatchInserterWithIdName[T any](client *firestore.Client, collectionName string, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *BatchInserter[T] {
+	var t T
+	modelType := reflect.TypeOf(t)
+	if modelType.Kind() == reflect.Ptr {
+		modelType = modelType.Elem()
+	}
+	var idx int
+	if len(fieldName) == 0 {
+		idx, _, _ = FindIdField(modelType)
+	} else {
+		idx, _, _ = FindFieldByName(modelType, fieldName)
+	}
 	if len(fieldName) == 0 {
 		_, idName, _ := FindIdField(modelType)
 		fieldName = idName
@@ -24,42 +34,23 @@ func NewBatchInserterWithIdName(client *firestore.Client, collectionName string,
 	if len(options) >= 1 {
 		mp = options[0]
 	}
-	modelsType := reflect.Zero(reflect.SliceOf(modelType)).Type()
 	collection := client.Collection(collectionName)
-	return &BatchInserter{client: client, collection: collection, IdName: fieldName, modelType: modelType, modelsType: modelsType, Map: mp}
+	return &BatchInserter[T]{client: client, collection: collection, Idx: idx, Map: mp}
 }
 
-func NewBatchInserter(client *firestore.Client, collectionName string, modelType reflect.Type, options ...func(context.Context, interface{}) (interface{}, error)) *BatchInserter {
-	return NewBatchInserterWithIdName(client, collectionName, modelType, "", options...)
+func NewBatchInserter[T any](client *firestore.Client, collectionName string, options ...func(context.Context, interface{}) (interface{}, error)) *BatchInserter[T] {
+	return NewBatchInserterWithIdName[T](client, collectionName, "", options...)
 }
 
-func (w *BatchInserter) Write(ctx context.Context, models interface{}) ([]int, []int, error) {
-	successIndices := make([]int, 0)
-	failIndices := make([]int, 0)
-
-	s := reflect.ValueOf(models)
-	var err error
+func (w *BatchInserter[T]) Write(ctx context.Context, models []T) (int64, error) {
 	if w.Map != nil {
-		m2, er0 := MapModels(ctx, models, w.Map)
+		_, er0 := MapModels(ctx, models, w.Map)
 		if er0 != nil {
-			err = er0
+			return 0, er0
 		} else {
-			_, err = InsertMany(ctx, w.collection, w.client, m2, w.IdName)
+			return InsertMany(ctx, w.client, w.collection, models, w.Idx)
 		}
 	} else {
-		_, err = InsertMany(ctx, w.collection, w.client, models, w.IdName)
+		return InsertMany(ctx, w.client, w.collection, models, w.Idx)
 	}
-
-	if err == nil {
-		// Return full success
-		for i := 0; i < s.Len(); i++ {
-			successIndices = append(successIndices, i)
-		}
-		return successIndices, failIndices, err
-	}
-	//fail
-	for i := 0; i < s.Len(); i++ {
-		failIndices = append(failIndices, i)
-	}
-	return successIndices, failIndices, nil
 }

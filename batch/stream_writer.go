@@ -6,83 +6,60 @@ import (
 	"reflect"
 )
 
-type StreamBatchWriter struct {
+type StreamWriter[T any] struct {
 	client     *firestore.Client
 	collection *firestore.CollectionRef
-	IdName     string
-	modelType  reflect.Type
-	modelsType reflect.Type
-	batch      []interface{}
+	Idx        int
+	batch      []T
 	batchSize  int
 	Map        func(ctx context.Context, model interface{}) (interface{}, error)
 }
 
-func NewStreamBatchWriterWithIdName(client *firestore.Client, collectionName string, modelType reflect.Type, batchSize int, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *StreamBatchWriter {
+func NewStreamWriterWithIdName[T any](client *firestore.Client, collectionName string, batchSize int, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *StreamWriter[T] {
+	var t T
+	modelType := reflect.TypeOf(t)
+	if modelType.Kind() == reflect.Ptr {
+		modelType = modelType.Elem()
+	}
+	var idx int
 	if len(fieldName) == 0 {
-		_, idName, _ := FindIdField(modelType)
-		fieldName = idName
+		idx, _, _ = FindIdField(modelType)
+	} else {
+		idx, _, _ = FindFieldByName(modelType, fieldName)
 	}
 	var mp func(context.Context, interface{}) (interface{}, error)
 	if len(options) >= 1 {
 		mp = options[0]
 	}
-	modelsType := reflect.Zero(reflect.SliceOf(modelType)).Type()
 	collection := client.Collection(collectionName)
-	batch := make([]interface{}, 0)
-	return &StreamBatchWriter{client: client, collection: collection, IdName: fieldName, modelType: modelType, modelsType: modelsType, Map: mp, batchSize: batchSize, batch: batch}
+	batch := make([]T, 0)
+	return &StreamWriter[T]{client: client, collection: collection, Idx: idx, Map: mp, batchSize: batchSize, batch: batch}
 }
-func NewStreamBatchWriter(client *firestore.Client, collectionName string, modelType reflect.Type, batchSize int, options ...func(context.Context, interface{}) (interface{}, error)) *StreamBatchWriter {
-	return NewStreamBatchWriterWithIdName(client, collectionName, modelType, batchSize, "", options...)
+func NewStreamWriter[T any](client *firestore.Client, collectionName string, batchSize int, options ...func(context.Context, interface{}) (interface{}, error)) *StreamWriter[T] {
+	return NewStreamWriterWithIdName[T](client, collectionName, batchSize, "", options...)
 }
 
-func (w *StreamBatchWriter) Write(ctx context.Context, model interface{}) error {
+func (w *StreamWriter[T]) Write(ctx context.Context, model T) error {
 	if w.Map != nil {
 		m2, er0 := w.Map(ctx, model)
 		if er0 != nil {
 			return er0
 		}
-		w.batch = append(w.batch, m2)
+		w.batch = append(w.batch, m2.(T))
 	} else {
 		w.batch = append(w.batch, model)
 	}
-	if len(w.batch) >= w.batchSize {
-		_, _, err := w.flush(ctx, w.batch)
-		return err
+	le := len(w.batch)
+	if le >= w.batchSize {
+		return w.Flush(ctx)
 	}
 	return nil
 }
-func (w *StreamBatchWriter) Flush(ctx context.Context) error {
-	_, _, err := w.flush(ctx, w.batch)
+func (w *StreamWriter[T]) Flush(ctx context.Context) error {
+	if len(w.batch) == 0 {
+		return nil
+	}
+	_, err := SaveMany(ctx, w.client, w.collection, w.batch, w.Idx)
+	w.batch = make([]T, 0)
 	return err
-}
-func (w *StreamBatchWriter) flush(ctx context.Context, models interface{}) ([]int, []int, error) {
-	successIndices := make([]int, 0)
-	failIndices := make([]int, 0)
-
-	s := reflect.ValueOf(models)
-	var err error
-	if w.Map != nil {
-		m2, er0 := MapModels(ctx, models, w.Map)
-		if er0 != nil {
-			err = er0
-		} else {
-			_, err = SaveMany(ctx, w.collection, w.client, m2, w.IdName)
-		}
-	} else {
-		_, err = SaveMany(ctx, w.collection, w.client, models, w.IdName)
-	}
-
-	if err == nil {
-		// Return full success
-		for i := 0; i < s.Len(); i++ {
-			successIndices = append(successIndices, i)
-		}
-		return successIndices, failIndices, err
-	}
-	//fail
-	for i := 0; i < s.Len(); i++ {
-		failIndices = append(failIndices, i)
-	}
-	w.batch = make([]interface{}, 0)
-	return successIndices, failIndices, nil
 }

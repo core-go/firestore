@@ -6,59 +6,46 @@ import (
 	"reflect"
 )
 
-type BatchUpdater struct {
+type BatchUpdater[T any] struct {
 	client     *firestore.Client
 	collection *firestore.CollectionRef
-	IdName     string
-	modelType  reflect.Type
-	modelsType reflect.Type
+	Idx        int
 	Map        func(ctx context.Context, model interface{}) (interface{}, error)
 }
 
-func NewFireStoreUpdateBatchWriterWithIdName(client *firestore.Client, collectionName string, modelType reflect.Type, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *BatchUpdater {
+func NewBatchUpdaterWithIdName[T any](client *firestore.Client, collectionName string, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *BatchUpdater[T] {
+	var t T
+	modelType := reflect.TypeOf(t)
+	if modelType.Kind() == reflect.Ptr {
+		modelType = modelType.Elem()
+	}
+	var idx int
 	if len(fieldName) == 0 {
-		_, idName, _ := FindIdField(modelType)
-		fieldName = idName
+		idx, _, _ = FindIdField(modelType)
+	} else {
+		idx, _, _ = FindFieldByName(modelType, fieldName)
 	}
 	var mp func(context.Context, interface{}) (interface{}, error)
 	if len(options) >= 1 {
 		mp = options[0]
 	}
-	modelsType := reflect.Zero(reflect.SliceOf(modelType)).Type()
 	collection := client.Collection(collectionName)
-	return &BatchUpdater{client, collection, fieldName, modelType, modelsType, mp}
+	return &BatchUpdater[T]{client, collection, idx, mp}
 }
 
-func NewFireStoreUpdateBatchWriter(client *firestore.Client, collectionName string, modelType reflect.Type) *BatchUpdater {
-	return NewFireStoreUpdateBatchWriterWithIdName(client, collectionName, modelType, "")
+func NewBatchUpdater[T any](client *firestore.Client, collectionName string) *BatchUpdater[T] {
+	return NewBatchUpdaterWithIdName[T](client, collectionName, "")
 }
 
-func (w *BatchUpdater) Write(ctx context.Context, models interface{}) ([]int, []int, error) {
-	successIndices := make([]int, 0)
-	failIndices := make([]int, 0)
-
-	s := reflect.ValueOf(models)
-	var err error
+func (w *BatchUpdater[T]) Write(ctx context.Context, models []T) (int64, error) {
 	if w.Map != nil {
-		m2, er0 := MapModels(ctx, models, w.Map)
+		_, er0 := MapModels(ctx, models, w.Map)
 		if er0 != nil {
-			err = er0
+			return 0, er0
 		} else {
-			_, err = UpdateMany(ctx, w.collection, w.client, m2, w.IdName)
+			return UpdateMany(ctx, w.client, w.collection, models, w.Idx)
 		}
 	} else {
-		_, err = UpdateMany(ctx, w.collection, w.client, models, w.IdName)
+		return InsertMany(ctx, w.client, w.collection, models, w.Idx)
 	}
-	if err == nil {
-		// Return full success
-		for i := 0; i < s.Len(); i++ {
-			successIndices = append(successIndices, i)
-		}
-		return successIndices, failIndices, err
-	}
-	//fail
-	for i := 0; i < s.Len(); i++ {
-		failIndices = append(failIndices, i)
-	}
-	return successIndices, failIndices, nil
 }
