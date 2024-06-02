@@ -79,7 +79,7 @@ func (s *Exporter[T]) ScanAndWrite(ctx context.Context, iter *firestore.Document
 	var i int64
 	i = 0
 	for {
-		docs, er1 := iter.Next()
+		doc, er1 := iter.Next()
 		if errors.Is(er1, iterator.Done) {
 			break
 		}
@@ -87,11 +87,11 @@ func (s *Exporter[T]) ScanAndWrite(ctx context.Context, iter *firestore.Document
 			return i, er1
 		}
 		var obj T
-		er2 := docs.DataTo(&obj)
+		er2 := doc.DataTo(&obj)
 		if er2 != nil {
 			return i, er2
 		}
-		BindCommonFields(&obj, docs, s.IdIndex, s.CreateTimeIndex, s.UpdateTimeIndex)
+		BindCommonFields(&obj, doc, s.IdIndex, s.CreateTimeIndex, s.UpdateTimeIndex)
 		er3 := s.TransformAndWrite(ctx, s.Write, &obj)
 		if er3 != nil {
 			return i, er3
