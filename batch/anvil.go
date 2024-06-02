@@ -60,20 +60,6 @@ func (s *Anvil) RegisterModifierFunc(t interface{}, mod func(f reflect.Value) (i
 
 // Notation of go type as a list of []Item
 // where key is a string and value is a typed interface value
-func Notation(source interface{}, behaviour mode, glue string) ([]Item, error) {
-	if source == nil {
-		return nil, nil
-	}
-	s := &Anvil{
-		Glue:     glue,
-		Mode:     behaviour,
-		modifier: make(map[string]func(f reflect.Value) (interface{}, bool, error)),
-	}
-	return s.notation("", "", reflect.ValueOf(source), false)
-}
-
-// Notation of go type as a list of []Item
-// where key is a string and value is a typed interface value
 func (s *Anvil) Notation(sample interface{}) ([]Item, error) {
 	if sample == nil {
 		return nil, nil

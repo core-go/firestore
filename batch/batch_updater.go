@@ -37,15 +37,15 @@ func NewBatchUpdater[T any](client *firestore.Client, collectionName string) *Ba
 	return NewBatchUpdaterWithIdName[T](client, collectionName, "")
 }
 
-func (w *BatchUpdater[T]) Write(ctx context.Context, models []T) (int64, error) {
+func (w *BatchUpdater[T]) Write(ctx context.Context, models []T) ([]int, error) {
 	if w.Map != nil {
 		_, er0 := MapModels(ctx, models, w.Map)
 		if er0 != nil {
-			return 0, er0
+			return nil, er0
 		} else {
 			return UpdateMany(ctx, w.client, w.collection, models, w.Idx)
 		}
 	} else {
-		return InsertMany(ctx, w.client, w.collection, models, w.Idx)
+		return UpdateMany(ctx, w.client, w.collection, models, w.Idx)
 	}
 }

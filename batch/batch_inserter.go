@@ -42,11 +42,14 @@ func NewBatchInserter[T any](client *firestore.Client, collectionName string, op
 	return NewBatchInserterWithIdName[T](client, collectionName, "", options...)
 }
 
-func (w *BatchInserter[T]) Write(ctx context.Context, models []T) (int64, error) {
+func (w *BatchInserter[T]) Write(ctx context.Context, models []T) ([]int, error) {
+	if len(models) == 0 {
+		return nil, nil
+	}
 	if w.Map != nil {
 		_, er0 := MapModels(ctx, models, w.Map)
 		if er0 != nil {
-			return 0, er0
+			return nil, er0
 		} else {
 			return InsertMany(ctx, w.client, w.collection, models, w.Idx)
 		}

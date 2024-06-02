@@ -39,7 +39,7 @@ func NewBatchWriterWithIdName[T any](client *firestore.Client, collectionName st
 func NewBatchWriter[T any](client *firestore.Client, collectionName string, options ...func(context.Context, interface{}) (interface{}, error)) *BatchWriter[T] {
 	return NewBatchWriterWithIdName[T](client, collectionName, "", options...)
 }
-func (w *BatchWriter[T]) Write(ctx context.Context, models []T) (int64, error) {
+func (w *BatchWriter[T]) Write(ctx context.Context, models []T) (int, error) {
 	if w.Map != nil {
 		_, er0 := MapModels(ctx, models, w.Map)
 		if er0 != nil {
