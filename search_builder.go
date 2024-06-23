@@ -62,10 +62,7 @@ func (b *SearchBuilder) Search(ctx context.Context, m interface{}, results inter
 }
 
 func BuildSearchResult(ctx context.Context, collection *firestore.CollectionRef, results interface{}, query []Query, fields []string, sort map[string]firestore.Direction, limit int64, refId string, idIndex int, createdTimeIndex int, updatedTimeIndex int) (string, error) {
-	var ilimit int
-	ilimit = int(limit)
-
-	queries, er0 := BuildQuerySearch(ctx, collection, query, fields, sort, ilimit, refId)
+	queries, er0 := BuildQuerySearch(ctx, collection, query, fields, sort, int(limit), refId)
 	if er0 != nil {
 		return "", er0
 	}
@@ -87,7 +84,6 @@ func BuildSearchResult(ctx context.Context, collection *firestore.CollectionRef,
 			return lastId, er3
 		}
 		BindCommonFields(result, doc, idIndex, createdTimeIndex, updatedTimeIndex)
-		SetValue(result, idIndex, doc.Ref.ID)
 		results = appendToArray(results, result)
 	}
 
@@ -185,13 +181,4 @@ func GetSortType(sortType string) firestore.Direction {
 	} else {
 		return firestore.Asc
 	}
-}
-
-func contains(s []string, e string) bool {
-	for _, a := range s {
-		if a == e {
-			return true
-		}
-	}
-	return false
 }

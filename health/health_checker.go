@@ -1,4 +1,4 @@
-package firestore
+package health
 
 import (
 	"cloud.google.com/go/firestore"

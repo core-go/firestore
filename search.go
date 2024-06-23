@@ -40,6 +40,7 @@ func FindFieldByName(modelType reflect.Type, fieldName string) (int, string, str
 	}
 	return -1, fieldName, fieldName
 }
+
 // for get all and search
 func appendToArray(arr interface{}, item interface{}) interface{} {
 	arrValue := reflect.ValueOf(arr)
@@ -72,12 +73,4 @@ func findBsonField(modelType reflect.Type, bsonName string) (int, string, string
 		}
 	}
 	return -1, "", ""
-}
-func SetValue(model interface{}, index int, value interface{}) (interface{}, error) {
-	v := reflect.Indirect(reflect.ValueOf(model))
-	if v.Kind() == reflect.Ptr {
-		v = reflect.Indirect(v)
-	}
-	v.Field(index).Set(reflect.ValueOf(value))
-	return model, nil
 }
