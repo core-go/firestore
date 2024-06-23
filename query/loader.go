@@ -3,8 +3,8 @@ package query
 import (
 	"cloud.google.com/go/firestore"
 	"context"
+	"fmt"
 	"google.golang.org/api/iterator"
-	"log"
 	"reflect"
 
 	f "github.com/core-go/firestore"
@@ -12,38 +12,50 @@ import (
 
 type Loader[T any] struct {
 	Collection       *firestore.CollectionRef
-	ModelType        reflect.Type
+	Map              func(*T)
 	idIndex          int
 	createdTimeIndex int
 	updatedTimeIndex int
 }
 
-func NewLoader[T any](client *firestore.Client, collectionName string, options ...string) *Loader[T] {
+func NewLoader[T any](client *firestore.Client, collectionName string, opts ...string) *Loader[T] {
+	return NewLoaderWithMap[T](client, collectionName, nil, opts...)
+}
+func NewLoaderWithMap[T any](client *firestore.Client, collectionName string, mp func(*T), opts ...string) *Loader[T] {
 	idx := -1
 	var idFieldName string
 	var createdTimeFieldName string
 	var updatedTimeFieldName string
-	if len(options) > 0 && len(options[0]) > 0 {
-		createdTimeFieldName = options[0]
+	if len(opts) > 0 && len(opts[0]) > 0 {
+		createdTimeFieldName = opts[0]
 	}
-	if len(options) > 1 && len(options[1]) > 0 {
-		updatedTimeFieldName = options[1]
+	if len(opts) > 1 && len(opts[1]) > 0 {
+		updatedTimeFieldName = opts[1]
 	}
-	if len(options) > 2 && len(options[2]) > 0 {
-		idFieldName = options[2]
+	if len(opts) > 2 && len(opts[2]) > 0 {
+		idFieldName = opts[2]
 	}
 	var t T
 	modelType := reflect.TypeOf(t)
+	if modelType.Kind() != reflect.Struct {
+		panic("T must be a struct")
+	}
 	if len(idFieldName) == 0 {
 		idx, _, _ = f.FindIdField(modelType)
 		if idx < 0 {
-			log.Println(modelType.Name() + " repository can't use functions that need Id value (Ex Load, Exist, Save, Update) because don't have any fields of " + modelType.Name() + " struct define _id bson tag.")
+			panic(modelType.Name() + " loader can't use functions that need Id value (Ex Load, Exist, Save, Update) because don't have any fields of " + modelType.Name() + " struct define _id bson tag.")
 		}
 	} else {
 		idx, _, _ = f.FindFieldByName(modelType, idFieldName)
 		if idx < 0 {
-			log.Println(modelType.Name() + " repository can't use functions that need Id value (Ex Load, Exist, Save, Update) because don't have any fields of " + modelType.Name())
+			panic(modelType.Name() + " loader can't use functions that need Id value (Ex Load, Exist, Save, Update) because don't have any fields of " + modelType.Name())
 		}
+	}
+	mv := reflect.ValueOf(t)
+	id := mv.Field(idx).Interface()
+	_, ok := id.(string)
+	if !ok {
+		panic(fmt.Sprintf("%s type of %s struct must be string", modelType.Field(idx).Name, modelType.Name()))
 	}
 	ctIdx := -1
 	if len(createdTimeFieldName) >= 0 {
@@ -53,7 +65,7 @@ func NewLoader[T any](client *firestore.Client, collectionName string, options .
 	if len(updatedTimeFieldName) >= 0 {
 		utIdx, _, _ = f.FindFieldByName(modelType, updatedTimeFieldName)
 	}
-	return &Loader[T]{Collection: client.Collection(collectionName), ModelType: modelType, idIndex: idx, createdTimeIndex: ctIdx, updatedTimeIndex: utIdx}
+	return &Loader[T]{Collection: client.Collection(collectionName), Map: mp, idIndex: idx, createdTimeIndex: ctIdx, updatedTimeIndex: utIdx}
 }
 
 func (s *Loader[T]) All(ctx context.Context) ([]T, error) {
@@ -74,7 +86,9 @@ func (s *Loader[T]) All(ctx context.Context) ([]T, error) {
 		}
 
 		f.BindCommonFields(&obj, doc, s.idIndex, s.createdTimeIndex, s.updatedTimeIndex)
-
+		if s.Map != nil {
+			s.Map(&obj)
+		}
 		objs = append(objs, obj)
 	}
 	return objs, nil
@@ -82,14 +96,18 @@ func (s *Loader[T]) All(ctx context.Context) ([]T, error) {
 
 func (s *Loader[T]) Load(ctx context.Context, id string) (*T, error) {
 	var obj T
-	ok, err := f.FindOneAndDecodeWithIdIndexAndTracking(ctx, s.Collection, id, &obj, s.idIndex, s.createdTimeIndex, s.updatedTimeIndex)
+	ok, doc, err := f.Load(ctx, s.Collection, id, &obj)
 	if err != nil {
 		return nil, err
 	}
-	if ok {
-		return &obj, nil
+	if !ok {
+		return nil, nil
 	}
-	return nil, nil
+	f.BindCommonFields(&obj, doc, s.idIndex, s.createdTimeIndex, s.updatedTimeIndex)
+	if s.Map != nil {
+		s.Map(&obj)
+	}
+	return &obj, nil
 }
 
 func (s *Loader[T]) Exist(ctx context.Context, id string) (bool, error) {

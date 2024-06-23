@@ -10,44 +10,35 @@ type BatchWriter[T any] struct {
 	client     *firestore.Client
 	collection *firestore.CollectionRef
 	Idx        int
-	Map        func(ctx context.Context, model interface{}) (interface{}, error)
+	Map        func(*T)
 }
 
-func NewBatchWriterWithIdName[T any](client *firestore.Client, collectionName string, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *BatchWriter[T] {
+func NewBatchWriterWithIdName[T any](client *firestore.Client, collectionName string, opts ...func(*T)) *BatchWriter[T] {
 	var t T
 	modelType := reflect.TypeOf(t)
-	if modelType.Kind() == reflect.Ptr {
-		modelType = modelType.Elem()
+	if modelType.Kind() != reflect.Struct {
+		panic("T must be a struct")
 	}
-	var idx int
-	if len(fieldName) == 0 {
-		idx, _, _ = FindIdField(modelType)
-	} else {
-		idx, _, _ = FindFieldByName(modelType, fieldName)
+	idx := FindIdField(modelType)
+	if idx < 0 {
+		panic("Require Id field of " + modelType.Name() + " struct define _id bson tag.")
 	}
-	if len(fieldName) == 0 {
-		_, idName, _ := FindIdField(modelType)
-		fieldName = idName
-	}
-	var mp func(context.Context, interface{}) (interface{}, error)
-	if len(options) >= 1 {
-		mp = options[0]
+	var mp func(*T)
+	if len(opts) >= 1 {
+		mp = opts[0]
 	}
 	collection := client.Collection(collectionName)
 	return &BatchWriter[T]{client: client, collection: collection, Idx: idx, Map: mp}
 }
-func NewBatchWriter[T any](client *firestore.Client, collectionName string, options ...func(context.Context, interface{}) (interface{}, error)) *BatchWriter[T] {
-	return NewBatchWriterWithIdName[T](client, collectionName, "", options...)
-}
 func (w *BatchWriter[T]) Write(ctx context.Context, models []T) (int, error) {
-	if w.Map != nil {
-		_, er0 := MapModels(ctx, models, w.Map)
-		if er0 != nil {
-			return 0, er0
-		} else {
-			return SaveMany(ctx, w.client, w.collection, models, w.Idx)
-		}
-	} else {
-		return SaveMany(ctx, w.client, w.collection, models, w.Idx)
+	if len(models) == 0 {
+		return -1, nil
 	}
+	if w.Map != nil {
+		l := len(models)
+		for i := 0; i < l; i++ {
+			w.Map(&models[i])
+		}
+	}
+	return SaveMany(ctx, w.client, w.collection, models, w.Idx)
 }

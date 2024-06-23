@@ -10,42 +10,36 @@ type BatchUpdater[T any] struct {
 	client     *firestore.Client
 	collection *firestore.CollectionRef
 	Idx        int
-	Map        func(ctx context.Context, model interface{}) (interface{}, error)
+	Map        func(*T)
 }
 
-func NewBatchUpdaterWithIdName[T any](client *firestore.Client, collectionName string, fieldName string, options ...func(context.Context, interface{}) (interface{}, error)) *BatchUpdater[T] {
+func NewBatchUpdater[T any](client *firestore.Client, collectionName string, opts ...func(*T)) *BatchUpdater[T] {
 	var t T
 	modelType := reflect.TypeOf(t)
-	if modelType.Kind() == reflect.Ptr {
-		modelType = modelType.Elem()
+	if modelType.Kind() != reflect.Struct {
+		panic("T must be a struct")
 	}
-	var idx int
-	if len(fieldName) == 0 {
-		idx, _, _ = FindIdField(modelType)
-	} else {
-		idx, _, _ = FindFieldByName(modelType, fieldName)
+	idx := FindIdField(modelType)
+	if idx < 0 {
+		panic("Require Id field of " + modelType.Name() + " struct define _id bson tag.")
 	}
-	var mp func(context.Context, interface{}) (interface{}, error)
-	if len(options) >= 1 {
-		mp = options[0]
+	var mp func(*T)
+	if len(opts) >= 1 {
+		mp = opts[0]
 	}
 	collection := client.Collection(collectionName)
 	return &BatchUpdater[T]{client, collection, idx, mp}
 }
 
-func NewBatchUpdater[T any](client *firestore.Client, collectionName string) *BatchUpdater[T] {
-	return NewBatchUpdaterWithIdName[T](client, collectionName, "")
-}
-
-func (w *BatchUpdater[T]) Write(ctx context.Context, models []T) ([]int, error) {
-	if w.Map != nil {
-		_, er0 := MapModels(ctx, models, w.Map)
-		if er0 != nil {
-			return nil, er0
-		} else {
-			return UpdateMany(ctx, w.client, w.collection, models, w.Idx)
-		}
-	} else {
-		return UpdateMany(ctx, w.client, w.collection, models, w.Idx)
+func (w *BatchUpdater[T]) Write(ctx context.Context, models []T) (int, error) {
+	if len(models) == 0 {
+		return -1, nil
 	}
+	if w.Map != nil {
+		l := len(models)
+		for i := 0; i < l; i++ {
+			w.Map(&models[i])
+		}
+	}
+	return UpdateMany(ctx, w.client, w.collection, models, w.Idx)
 }

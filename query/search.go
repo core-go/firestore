@@ -15,27 +15,31 @@ type SearchBuilder[T any, F any] struct {
 	BuildQuery       func(F) ([]f.Query, []string)
 	BuildSort        func(s string, modelType reflect.Type) map[string]firestore.Direction
 	GetSort          func(interface{}) string
+	Map              func(*T)
 	idIndex          int
 	createdTimeIndex int
 	updatedTimeIndex int
 }
 
-func NewSearchBuilderWithSort[T any, F any](client *firestore.Client, collectionName string, buildQuery func(F) ([]f.Query, []string), getSort func(interface{}) string, buildSort func(s string, modelType reflect.Type) map[string]firestore.Direction, options ...string) *SearchBuilder[T, F] {
+func NewSearchBuilderWithSort[T any, F any](client *firestore.Client, collectionName string, buildQuery func(F) ([]f.Query, []string), getSort func(interface{}) string, buildSort func(s string, modelType reflect.Type) map[string]firestore.Direction, mp func(*T), opts ...string) *SearchBuilder[T, F] {
 	idx := -1
 	var idFieldName string
 	var createdTimeFieldName string
 	var updatedTimeFieldName string
-	if len(options) > 0 && len(options[0]) > 0 {
-		createdTimeFieldName = options[0]
+	if len(opts) > 0 && len(opts[0]) > 0 {
+		createdTimeFieldName = opts[0]
 	}
-	if len(options) > 1 && len(options[1]) > 0 {
-		updatedTimeFieldName = options[1]
+	if len(opts) > 1 && len(opts[1]) > 0 {
+		updatedTimeFieldName = opts[1]
 	}
-	if len(options) > 2 && len(options[2]) > 0 {
-		idFieldName = options[2]
+	if len(opts) > 2 && len(opts[2]) > 0 {
+		idFieldName = opts[2]
 	}
 	var t T
 	modelType := reflect.TypeOf(t)
+	if modelType.Kind() != reflect.Struct {
+		panic("T must be a struct")
+	}
 	if len(idFieldName) == 0 {
 		idx, _, _ = f.FindIdField(modelType)
 		if idx < 0 {
@@ -56,10 +60,13 @@ func NewSearchBuilderWithSort[T any, F any](client *firestore.Client, collection
 		utIdx, _, _ = f.FindFieldByName(modelType, updatedTimeFieldName)
 	}
 	collection := client.Collection(collectionName)
-	return &SearchBuilder[T, F]{Collection: collection, ModelType: modelType, BuildQuery: buildQuery, BuildSort: buildSort, GetSort: getSort, idIndex: idx, createdTimeIndex: ctIdx, updatedTimeIndex: utIdx}
+	return &SearchBuilder[T, F]{Collection: collection, ModelType: modelType, BuildQuery: buildQuery, BuildSort: buildSort, GetSort: getSort, Map: mp, idIndex: idx, createdTimeIndex: ctIdx, updatedTimeIndex: utIdx}
 }
-func NewSearchBuilder[T any, F any](client *firestore.Client, collectionName string, buildQuery func(F) ([]f.Query, []string), getSort func(interface{}) string, options ...string) *SearchBuilder[T, F] {
-	return NewSearchBuilderWithSort[T, F](client, collectionName, buildQuery, getSort, f.BuildSort, options...)
+func NewSearchBuilderWithMap[T any, F any](client *firestore.Client, collectionName string, buildQuery func(F) ([]f.Query, []string), getSort func(interface{}) string, mp func(*T), opts ...string) *SearchBuilder[T, F] {
+	return NewSearchBuilderWithSort[T, F](client, collectionName, buildQuery, getSort, f.BuildSort, mp, opts...)
+}
+func NewSearchBuilder[T any, F any](client *firestore.Client, collectionName string, buildQuery func(F) ([]f.Query, []string), getSort func(interface{}) string, opts ...string) *SearchBuilder[T, F] {
+	return NewSearchBuilderWithSort[T, F](client, collectionName, buildQuery, getSort, f.BuildSort, nil, opts...)
 }
 func (b *SearchBuilder[T, F]) Search(ctx context.Context, filter F, limit int64, nextPageToken string) ([]T, string, error) {
 	query, fields := b.BuildQuery(filter)
@@ -68,5 +75,11 @@ func (b *SearchBuilder[T, F]) Search(ctx context.Context, filter F, limit int64,
 	sort := b.BuildSort(s, b.ModelType)
 	var objs []T
 	refId, err := f.BuildSearchResult(ctx, b.Collection, &objs, query, fields, sort, limit, nextPageToken, b.idIndex, b.createdTimeIndex, b.updatedTimeIndex)
+	if b.Map != nil {
+		l := len(objs)
+		for i := 0; i < l; i++ {
+			b.Map(&objs[i])
+		}
+	}
 	return objs, refId, err
 }

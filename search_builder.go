@@ -90,6 +90,18 @@ func BuildSearchResult(ctx context.Context, collection *firestore.CollectionRef,
 	return lastId, nil
 }
 
+func appendToArray(arr interface{}, item interface{}) interface{} {
+	arrValue := reflect.ValueOf(arr)
+	elemValue := arrValue.Elem()
+
+	itemValue := reflect.ValueOf(item)
+	if itemValue.Kind() == reflect.Ptr {
+		itemValue = reflect.Indirect(itemValue)
+	}
+	elemValue.Set(reflect.Append(elemValue, itemValue))
+	return arr
+}
+
 func BuildQuerySearch(ctx context.Context, collection *firestore.CollectionRef, queries []Query, fields []string, sort map[string]firestore.Direction, limit int, refId string, options ...int) (firestore.Query, error) {
 	q := collection.Query
 	if len(sort) > 0 {

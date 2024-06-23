@@ -6,11 +6,10 @@ import (
 	"strings"
 )
 
-func BindCommonFields(result interface{}, doc *firestore.DocumentSnapshot, idIndex int, createdTimeIndex int, updatedTimeIndex int) {
-	rv := reflect.Indirect(reflect.ValueOf(result))
+func BindCommonFields(res interface{}, doc *firestore.DocumentSnapshot, idIndex int, createdTimeIndex int, updatedTimeIndex int) {
+	rv := reflect.Indirect(reflect.ValueOf(res))
 	fv := rv.Field(idIndex)
 	fv.Set(reflect.ValueOf(doc.Ref.ID))
-
 	if createdTimeIndex >= 0 {
 		cv := rv.Field(createdTimeIndex)
 		cv.Set(reflect.ValueOf(&doc.CreateTime))
@@ -20,6 +19,7 @@ func BindCommonFields(result interface{}, doc *firestore.DocumentSnapshot, idInd
 		uv.Set(reflect.ValueOf(&doc.UpdateTime))
 	}
 }
+
 func FindFieldByName(modelType reflect.Type, fieldName string) (int, string, string) {
 	numField := modelType.NumField()
 	for i := 0; i < numField; i++ {
@@ -41,18 +41,6 @@ func FindFieldByName(modelType reflect.Type, fieldName string) (int, string, str
 	return -1, fieldName, fieldName
 }
 
-// for get all and search
-func appendToArray(arr interface{}, item interface{}) interface{} {
-	arrValue := reflect.ValueOf(arr)
-	elemValue := arrValue.Elem()
-
-	itemValue := reflect.ValueOf(item)
-	if itemValue.Kind() == reflect.Ptr {
-		itemValue = reflect.Indirect(itemValue)
-	}
-	elemValue.Set(reflect.Append(elemValue, itemValue))
-	return arr
-}
 func FindIdField(modelType reflect.Type) (int, string, string) {
 	return findBsonField(modelType, "_id")
 }

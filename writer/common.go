@@ -1,4 +1,4 @@
-package batch
+package writer
 
 import (
 	"reflect"
@@ -8,7 +8,6 @@ import (
 func FindIdField(modelType reflect.Type) int {
 	return findBsonField(modelType, "_id")
 }
-
 func findBsonField(modelType reflect.Type, bsonName string) int {
 	numField := modelType.NumField()
 	for i := 0; i < numField; i++ {
