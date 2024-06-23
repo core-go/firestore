@@ -43,12 +43,12 @@ func NewLoaderWithMap[T any](client *firestore.Client, collectionName string, mp
 	if len(idFieldName) == 0 {
 		idx, _, _ = f.FindIdField(modelType)
 		if idx < 0 {
-			panic(modelType.Name() + " loader can't use functions that need Id value (Ex Load, Exist, Save, Update) because don't have any fields of " + modelType.Name() + " struct define _id bson tag.")
+			panic(fmt.Sprintf("%s struct requires id field which has bson tag '_id'", modelType.Name()))
 		}
 	} else {
 		idx, _, _ = f.FindFieldByName(modelType, idFieldName)
 		if idx < 0 {
-			panic(modelType.Name() + " loader can't use functions that need Id value (Ex Load, Exist, Save, Update) because don't have any fields of " + modelType.Name())
+			panic(fmt.Sprintf("%s struct requires id field which id name is '%s'", modelType.Name(), idFieldName))
 		}
 	}
 	mv := reflect.ValueOf(t)

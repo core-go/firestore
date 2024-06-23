@@ -46,15 +46,15 @@ func MakeFirestoreMap(modelType reflect.Type) map[string]string {
 	}
 	return maps
 }
-func MapToFirestore(json map[string]interface{}, doc *firestore.DocumentSnapshot, maps map[string]string) map[string]interface{} {
-	fs := doc.Data()
+func MapToFirestore(json map[string]interface{}, docMap map[string]interface{}, maps map[string]string) map[string]interface{} {
+	//docMap := doc.Data()
 	for k, v := range json {
 		fk, ok := maps[k]
 		if ok {
-			fs[fk] = v
+			docMap[fk] = v
 		}
 	}
-	return fs
+	return docMap
 }
 func Create(ctx context.Context, collection *firestore.CollectionRef, id string, model interface{}) (int64, string, *time.Time, error) {
 	var docRef *firestore.DocumentRef

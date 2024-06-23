@@ -35,7 +35,7 @@ func NewSearchAdapterWithSort[T any, F any](client *firestore.Client, collection
 	if len(options) > 3 && len(options[3]) > 0 {
 		idFieldName = options[3]
 	}
-	adapter := NewAdapter[T](client, collectionName, createdTimeFieldName, updatedTimeFieldName, versionField, versionField, idFieldName)
+	adapter := NewAdapter[T](client, collectionName, createdTimeFieldName, updatedTimeFieldName, versionField, idFieldName)
 	return &SearchAdapter[T, F]{Adapter: adapter, BuildQuery: buildQuery, BuildSort: buildSort, GetSort: getSort}
 }
 func (b *SearchAdapter[T, F]) Search(ctx context.Context, filter F, limit int64, nextPageToken string) ([]T, string, error) {
