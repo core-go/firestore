@@ -7,7 +7,7 @@ import (
 	"reflect"
 )
 
-type StreamWriter[T any] struct {
+type StreamUpdater[T any] struct {
 	client     *firestore.Client
 	collection *firestore.CollectionRef
 	Idx        int
@@ -16,7 +16,7 @@ type StreamWriter[T any] struct {
 	Map        func(T)
 }
 
-func NewStreamWriter[T any](client *firestore.Client, collectionName string, batchSize int, opts ...func(T)) *StreamWriter[T] {
+func NewStreamUpdater[T any](client *firestore.Client, collectionName string, batchSize int, opts ...func(T)) *StreamUpdater[T] {
 	var t T
 	modelType := reflect.TypeOf(t)
 	if modelType.Kind() == reflect.Ptr {
@@ -36,10 +36,10 @@ func NewStreamWriter[T any](client *firestore.Client, collectionName string, bat
 	}
 	collection := client.Collection(collectionName)
 	batch := make([]T, 0)
-	return &StreamWriter[T]{client: client, collection: collection, Idx: idx, Map: mp, batchSize: batchSize, batch: batch}
+	return &StreamUpdater[T]{client: client, collection: collection, Idx: idx, Map: mp, batchSize: batchSize, batch: batch}
 }
 
-func (w *StreamWriter[T]) Write(ctx context.Context, model T) error {
+func (w *StreamUpdater[T]) Write(ctx context.Context, model T) error {
 	if w.Map != nil {
 		w.Map(model)
 	}
@@ -50,11 +50,11 @@ func (w *StreamWriter[T]) Write(ctx context.Context, model T) error {
 	}
 	return nil
 }
-func (w *StreamWriter[T]) Flush(ctx context.Context) error {
+func (w *StreamUpdater[T]) Flush(ctx context.Context) error {
 	if len(w.batch) == 0 {
 		return nil
 	}
-	_, err := SaveMany[T](ctx, w.client, w.collection, w.batch, w.Idx)
+	_, err := UpdateMany[T](ctx, w.client, w.collection, w.batch, w.Idx)
 	w.batch = make([]T, 0)
 	return err
 }

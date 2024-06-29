@@ -3,6 +3,7 @@ package batch
 import (
 	"cloud.google.com/go/firestore"
 	"context"
+	"fmt"
 	"reflect"
 )
 
@@ -23,6 +24,10 @@ func NewBatchCreator[T any](client *firestore.Client, collectionName string, opt
 	if idx < 0 {
 		panic("Require Id field of " + modelType.Name() + " struct define _id bson tag.")
 	}
+	idField := modelType.Field(idx)
+	if idField.Type.String() != "string" {
+		panic(fmt.Sprintf("%s type of %s struct must be string", modelType.Field(idx).Name, modelType.Name()))
+	}
 	var mp func(*T)
 	if len(opts) >= 1 {
 		mp = opts[0]
@@ -41,5 +46,5 @@ func (w *BatchCreator[T]) Write(ctx context.Context, models []T) (int, error) {
 			w.Map(&models[i])
 		}
 	}
-	return CreateMany(ctx, w.client, w.collection, models, w.Idx)
+	return CreateMany[T](ctx, w.client, w.collection, models, w.Idx)
 }

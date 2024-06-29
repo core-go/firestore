@@ -51,19 +51,29 @@ func NewLoaderWithMap[T any](client *firestore.Client, collectionName string, mp
 			panic(fmt.Sprintf("%s struct requires id field which id name is '%s'", modelType.Name(), idFieldName))
 		}
 	}
-	mv := reflect.ValueOf(t)
-	id := mv.Field(idx).Interface()
-	_, ok := id.(string)
-	if !ok {
+	idField := modelType.Field(idx)
+	if idField.Type.String() != "string" {
 		panic(fmt.Sprintf("%s type of %s struct must be string", modelType.Field(idx).Name, modelType.Name()))
 	}
 	ctIdx := -1
 	if len(createdTimeFieldName) >= 0 {
 		ctIdx, _, _ = f.FindFieldByName(modelType, createdTimeFieldName)
+		if ctIdx >= 0 {
+			ctn := modelType.Field(ctIdx).Type.String()
+			if ctn != "*time.Time" {
+				panic(fmt.Sprintf("%s type of %s struct must be *time.Time", modelType.Field(ctIdx).Name, modelType.Name()))
+			}
+		}
 	}
 	utIdx := -1
 	if len(updatedTimeFieldName) >= 0 {
 		utIdx, _, _ = f.FindFieldByName(modelType, updatedTimeFieldName)
+		if utIdx >= 0 {
+			ctn := modelType.Field(utIdx).Type.String()
+			if ctn != "*time.Time" {
+				panic(fmt.Sprintf("%s type of %s struct must be *time.Time", modelType.Field(utIdx).Name, modelType.Name()))
+			}
+		}
 	}
 	return &Loader[T]{Collection: client.Collection(collectionName), Map: mp, idIndex: idx, createdTimeIndex: ctIdx, updatedTimeIndex: utIdx}
 }

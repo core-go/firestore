@@ -1,4 +1,4 @@
-package adapter
+package dao
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"google.golang.org/api/iterator"
 )
 
-type Adapter[T any] struct {
+type Dao[T any] struct {
 	Collection       *firestore.CollectionRef
 	ModelType        reflect.Type
 	idIndex          int
@@ -26,7 +26,7 @@ type Adapter[T any] struct {
 	versionIndex     int
 }
 
-func NewAdapter[T any](client *firestore.Client, collectionName string, options ...string) *Adapter[T] {
+func NewDao[T any](client *firestore.Client, collectionName string, options ...string) *Dao[T] {
 	idx := -1
 	versionIndex := -1
 	var versionField string
@@ -88,7 +88,7 @@ func NewAdapter[T any](client *firestore.Client, collectionName string, options 
 		}
 	}
 	maps := f.MakeFirestoreMap(modelType)
-	adapter := &Adapter[T]{Collection: client.Collection(collectionName), ModelType: modelType, idIndex: idx, idJson: idJson, Map: maps, createdTimeIndex: ctIdx, updatedTimeIndex: utIdx, updatedTimeJson: updatedTimeJson, versionIndex: versionIndex}
+	adapter := &Dao[T]{Collection: client.Collection(collectionName), ModelType: modelType, idIndex: idx, idJson: idJson, Map: maps, createdTimeIndex: ctIdx, updatedTimeIndex: utIdx, updatedTimeJson: updatedTimeJson, versionIndex: versionIndex}
 	if len(versionField) > 0 {
 		index, versionJson, versionFirestore := f.FindFieldByName(modelType, versionField)
 		if index >= 0 {
@@ -105,7 +105,7 @@ func NewAdapter[T any](client *firestore.Client, collectionName string, options 
 	return adapter
 }
 
-func (a *Adapter[T]) All(ctx context.Context) ([]T, error) {
+func (a *Dao[T]) All(ctx context.Context) ([]T, error) {
 	iter := a.Collection.Documents(ctx)
 	var objs []T
 	for {
@@ -129,7 +129,7 @@ func (a *Adapter[T]) All(ctx context.Context) ([]T, error) {
 	return objs, nil
 }
 
-func (a *Adapter[T]) Load(ctx context.Context, id string) (*T, error) {
+func (a *Dao[T]) Load(ctx context.Context, id string) (*T, error) {
 	var obj T
 	ok, doc, err := f.Load(ctx, a.Collection, id, &obj)
 	if err != nil {
@@ -142,10 +142,10 @@ func (a *Adapter[T]) Load(ctx context.Context, id string) (*T, error) {
 	return &obj, nil
 }
 
-func (a *Adapter[T]) Exist(ctx context.Context, id string) (bool, error) {
+func (a *Dao[T]) Exist(ctx context.Context, id string) (bool, error) {
 	return f.Exist(ctx, a.Collection, id)
 }
-func (a *Adapter[T]) Create(ctx context.Context, model *T) (int64, error) {
+func (a *Dao[T]) Create(ctx context.Context, model *T) (int64, error) {
 	mv := reflect.Indirect(reflect.ValueOf(model))
 	id := mv.Field(a.idIndex).Interface().(string)
 	if a.versionIndex >= 0 {
@@ -168,7 +168,7 @@ func (a *Adapter[T]) Create(ctx context.Context, model *T) (int64, error) {
 	}
 	return res, err
 }
-func (a *Adapter[T]) Save(ctx context.Context, model *T) (int64, error) {
+func (a *Dao[T]) Save(ctx context.Context, model *T) (int64, error) {
 	mv := reflect.Indirect(reflect.ValueOf(model))
 	id := mv.Field(a.idIndex).Interface().(string)
 	if len(id) == 0 {
@@ -227,7 +227,7 @@ func (a *Adapter[T]) Save(ctx context.Context, model *T) (int64, error) {
 	return 1, nil
 }
 
-func (a *Adapter[T]) Update(ctx context.Context, model *T) (int64, error) {
+func (a *Dao[T]) Update(ctx context.Context, model *T) (int64, error) {
 	mv := reflect.Indirect(reflect.ValueOf(model))
 	id := mv.Field(a.idIndex).Interface().(string)
 	if a.versionIndex >= 0 {
@@ -271,7 +271,7 @@ func (a *Adapter[T]) Update(ctx context.Context, model *T) (int64, error) {
 	return res, err
 }
 
-func (a *Adapter[T]) Patch(ctx context.Context, data map[string]interface{}) (int64, error) {
+func (a *Dao[T]) Patch(ctx context.Context, data map[string]interface{}) (int64, error) {
 	sid, ok := data[a.idJson]
 	if !ok {
 		return -1, fmt.Errorf("%s must be in map[string]interface{} for patch", a.idJson)
@@ -310,7 +310,7 @@ func (a *Adapter[T]) Patch(ctx context.Context, data map[string]interface{}) (in
 	return 1, nil
 }
 
-func (a *Adapter[T]) Delete(ctx context.Context, id string) (int64, error) {
+func (a *Dao[T]) Delete(ctx context.Context, id string) (int64, error) {
 	return f.Delete(ctx, a.Collection, id)
 }
 

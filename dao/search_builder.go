@@ -1,4 +1,4 @@
-package query
+package dao
 
 import (
 	"cloud.google.com/go/firestore"

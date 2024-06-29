@@ -26,11 +26,8 @@ func NewCreator[T any](client *firestore.Client, collectionName string, opts ...
 	if idx < 0 {
 		panic("Require Id field of " + modelType.Name() + " struct define _id bson tag.")
 	}
-	initModel := reflect.New(modelType).Interface()
-	vo := reflect.Indirect(reflect.ValueOf(initModel))
-	id := vo.Field(idx).Interface()
-	_, ok := id.(string)
-	if !ok {
+	idField := modelType.Field(idx)
+	if idField.Type.String() != "string" {
 		panic(fmt.Sprintf("%s type of %s struct must be string", modelType.Field(idx).Name, modelType.Name()))
 	}
 	var mp func(T)

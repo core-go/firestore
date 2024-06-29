@@ -1,4 +1,4 @@
-package query
+package adapter
 
 import (
 	"cloud.google.com/go/firestore"
