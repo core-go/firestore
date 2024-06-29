@@ -1,11 +1,11 @@
 package builder
 
 import (
-	f "github.com/core-go/firestore"
-	"github.com/core-go/search"
-	"log"
 	"reflect"
 	"strings"
+
+	f "github.com/core-go/firestore"
+	"github.com/core-go/search"
 )
 
 type Builder[F any] struct {
@@ -25,42 +25,57 @@ func (b *Builder[F]) BuildQuery(filter F) ([]f.Query, []string) {
 	return BuildQueryByType(filter, b.ModelType)
 }
 
-func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, []string) {
+var operators = map[string]string{
+	"=":                  "==",
+	"==":                 "==",
+	"!=":                 "!=",
+	">":                  ">",
+	">=":                 ">=",
+	"<":                  "<",
+	"<=":                 "<=",
+	"array-contains":     "array-contains",
+	"array-contains-any": "array-contains-any",
+	"in":                 "in",
+	"not-in":             "not-in",
+}
+
+func BuildQueryByType(filter interface{}, resultModelType reflect.Type) ([]f.Query, []string) {
 	var query = make([]f.Query, 0)
 	fields := make([]string, 0)
 
-	if _, ok := sm.(*search.Filter); ok {
+	if _, ok := filter.(*search.Filter); ok {
 		return query, fields
 	}
 
-	value := reflect.Indirect(reflect.ValueOf(sm))
+	value := reflect.Indirect(reflect.ValueOf(filter))
+	filterType := value.Type()
 	numField := value.NumField()
-	var keyword string
-	keywordFormat := map[string]string{
-		"prefix":  "==",
-		"contain": "==",
-		"equal":   "==",
-	}
 	for i := 0; i < numField; i++ {
+		fsName := getFirestore(filterType, i)
+		if fsName == "-" {
+			continue
+		}
+		filterType := value.Type()
+		operator := "=="
+		if key, ok := filterType.Field(i).Tag.Lookup("operator"); ok && len(key) > 0 {
+			oper, ok2 := operators[key]
+			if ok2 {
+				operator = oper
+			}
+		}
+
 		field := value.Field(i)
 		kind := field.Kind()
 		x := field.Interface()
-		ps := false
 		var psv string
 		if kind == reflect.Ptr {
 			if field.IsNil() {
 				continue
+			} else {
+				field = field.Elem()
+				kind = field.Kind()
+				x = field.Interface()
 			}
-			s0, ok0 := x.(*string)
-			if ok0 {
-				if s0 == nil || len(*s0) == 0 {
-					continue
-				}
-				ps = true
-				psv = *s0
-			}
-			field = field.Elem()
-			kind = field.Kind()
 		}
 		s0, ok0 := x.(string)
 		if ok0 {
@@ -69,163 +84,131 @@ func BuildQueryByType(sm interface{}, resultModelType reflect.Type) ([]f.Query, 
 			}
 			psv = s0
 		}
-		ks := kind.String()
-		if v, ok := x.(*search.Filter); ok {
+		if len(fsName) == 0 {
+			fsName = getFirestoreName(resultModelType, filterType.Field(i).Name)
+		}
+		if v, ok := x.(search.Filter); ok {
 			if len(v.Fields) > 0 {
 				for _, key := range v.Fields {
-					i, _, columnName := getFieldByJson(resultModelType, key)
-					if len(columnName) <= 0 {
+					i, _, fsName := getFieldByJson(resultModelType, key)
+					if len(fsName) <= 0 {
 						fields = fields[len(fields):]
 						break
 					} else if i == -1 {
-						columnName = key
+						fsName = key
 					}
-					if len(columnName) > 0 && columnName != "-" {
-						fields = append(fields, columnName)
+					if len(fsName) > 0 && fsName != "-" {
+						fields = append(fields, fsName)
 					}
 				}
-			}
-			if len(v.Q) > 0 {
-				keyword = strings.TrimSpace(v.Q)
 			}
 			continue
-		} else if ps || ks == "string" {
-			var keywordQuery f.Query
-			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
-			// var operator string
-			operator := "=="
-			var searchValue interface{}
-			if len(psv) > 0 {
-				const defaultKey = "contain"
-				if key, ok := value.Type().Field(i).Tag.Lookup("operator"); ok && len(key) > 0 {
-					operator = key
-				} else {
-					if key, ok := value.Type().Field(i).Tag.Lookup("match"); ok {
-						if format, exist := keywordFormat[key]; exist {
-							operator = format
-						} else {
-							log.Panicf("match not support \"%v\" format\n", key)
-						}
-					} else if format, exist := keywordFormat[defaultKey]; exist {
-						operator = format
-					}
-				}
-				searchValue = psv
-			} else if len(keyword) > 0 {
-				if key, ok := value.Type().Field(i).Tag.Lookup("keyword"); ok {
-					if format, exist := keywordFormat[key]; exist {
-						operator = format
-					} else {
-						log.Panicf("keyword not support \"%v\" format\n", key)
-					}
-				}
-				searchValue = keyword
-			}
-			if len(columnName) > 0 && len(operator) > 0 {
-				keywordQuery = f.Query{Path: columnName, Operator: operator, Value: searchValue}
-				query = append(query, keywordQuery)
-			}
-		} else if rangeTime, ok := x.(*search.TimeRange); ok && rangeTime != nil {
-			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
-			actionTimeQuery := make([]f.Query, 0)
-			if rangeTime.Min == nil {
-				actionTimeQuery = []f.Query{{Path: columnName, Operator: "<=", Value: rangeTime.Max}}
-			} else if rangeTime.Max == nil {
-				actionTimeQuery = []f.Query{{Path: columnName, Operator: ">=", Value: rangeTime.Min}}
-			} else {
-				actionTimeQuery = []f.Query{{Path: columnName, Operator: "<=", Value: rangeTime.Max}, {Path: columnName, Operator: ">=", Value: rangeTime.Min}}
-			}
-			query = append(query, actionTimeQuery...)
+		} else if len(fsName) == 0 {
+			continue
+		}
+		if len(psv) > 0 {
+			query = append(query, f.Query{Path: fsName, Operator: operator, Value: psv})
 		} else if rangeTime, ok := x.(search.TimeRange); ok {
-			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
-			actionTimeQuery := make([]f.Query, 0)
+			timeQuery := make([]f.Query, 0)
 			if rangeTime.Min == nil {
-				actionTimeQuery = []f.Query{{Path: columnName, Operator: "<=", Value: rangeTime.Max}}
+				timeQuery = []f.Query{{Path: fsName, Operator: "<=", Value: rangeTime.Max}}
 			} else if rangeTime.Max == nil {
-				actionTimeQuery = []f.Query{{Path: columnName, Operator: ">=", Value: rangeTime.Min}}
+				timeQuery = []f.Query{{Path: fsName, Operator: ">=", Value: rangeTime.Min}}
 			} else {
-				actionTimeQuery = []f.Query{{Path: columnName, Operator: "<=", Value: rangeTime.Max}, {Path: columnName, Operator: ">=", Value: rangeTime.Min}}
+				timeQuery = []f.Query{{Path: fsName, Operator: ">=", Value: rangeTime.Min}, {Path: fsName, Operator: "<=", Value: rangeTime.Max}}
 			}
-			query = append(query, actionTimeQuery...)
-		} else if rangeDate, ok := x.(*search.DateRange); ok && rangeDate != nil {
-			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
-			actionDateQuery := make([]f.Query, 0)
-			if rangeDate.Min == nil && rangeDate.Max == nil {
-				continue
-			} else if rangeDate.Min == nil {
-				actionDateQuery = []f.Query{{Path: columnName, Operator: "<=", Value: rangeDate.Max}}
-			} else if rangeDate.Max == nil {
-				actionDateQuery = []f.Query{{Path: columnName, Operator: ">=", Value: rangeDate.Min}}
-			} else {
-				actionDateQuery = []f.Query{{Path: columnName, Operator: "<=", Value: rangeDate.Max}, {Path: columnName, Operator: ">=", Value: rangeDate.Min}}
-			}
-			query = append(query, actionDateQuery...)
+			query = append(query, timeQuery...)
 		} else if rangeDate, ok := x.(search.DateRange); ok {
-			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
-			actionDateQuery := make([]f.Query, 0)
+			dateQuery := make([]f.Query, 0)
 			if rangeDate.Min == nil && rangeDate.Max == nil {
 				continue
 			} else if rangeDate.Min == nil {
-				actionDateQuery = []f.Query{{Path: columnName, Operator: "<=", Value: rangeDate.Max}}
+				dateQuery = []f.Query{{Path: fsName, Operator: "<=", Value: rangeDate.Max}}
 			} else if rangeDate.Max == nil {
-				actionDateQuery = []f.Query{{Path: columnName, Operator: ">=", Value: rangeDate.Min}}
+				dateQuery = []f.Query{{Path: fsName, Operator: ">=", Value: rangeDate.Min}}
 			} else {
-				actionDateQuery = []f.Query{{Path: columnName, Operator: "<=", Value: rangeDate.Max}, {Path: columnName, Operator: ">=", Value: rangeDate.Min}}
+				dateQuery = []f.Query{{Path: fsName, Operator: ">=", Value: rangeDate.Min}, {Path: fsName, Operator: "<=", Value: rangeDate.Max}}
 			}
-			query = append(query, actionDateQuery...)
-		} else if numberRange, ok := x.(*search.NumberRange); ok && numberRange != nil {
-			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
-			amountQuery := make([]f.Query, 0)
-
-			if numberRange.Min != nil {
-				amountQuery = append(amountQuery, f.Query{Path: columnName, Operator: ">=", Value: *numberRange.Min})
-			} else if numberRange.Lower != nil {
-				amountQuery = append(amountQuery, f.Query{Path: columnName, Operator: ">", Value: *numberRange.Lower})
-			}
-			if numberRange.Max != nil {
-				amountQuery = append(amountQuery, f.Query{Path: columnName, Operator: "<=", Value: *numberRange.Max})
-			} else if numberRange.Upper != nil {
-				amountQuery = append(amountQuery, f.Query{Path: columnName, Operator: "<", Value: *numberRange.Upper})
-			}
-
-			if len(amountQuery) > 0 {
-				query = append(query, amountQuery...)
-			}
+			query = append(query, dateQuery...)
 		} else if numberRange, ok := x.(search.NumberRange); ok {
-			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
-			amountQuery := make([]f.Query, 0)
+			numQuery := make([]f.Query, 0)
 
 			if numberRange.Min != nil {
-				amountQuery = append(amountQuery, f.Query{Path: columnName, Operator: ">=", Value: *numberRange.Min})
+				numQuery = append(numQuery, f.Query{Path: fsName, Operator: ">=", Value: *numberRange.Min})
 			} else if numberRange.Lower != nil {
-				amountQuery = append(amountQuery, f.Query{Path: columnName, Operator: ">", Value: *numberRange.Lower})
+				numQuery = append(numQuery, f.Query{Path: fsName, Operator: ">", Value: *numberRange.Lower})
 			}
 			if numberRange.Max != nil {
-				amountQuery = append(amountQuery, f.Query{Path: columnName, Operator: "<=", Value: *numberRange.Max})
+				numQuery = append(numQuery, f.Query{Path: fsName, Operator: "<=", Value: *numberRange.Max})
 			} else if numberRange.Upper != nil {
-				amountQuery = append(amountQuery, f.Query{Path: columnName, Operator: "<", Value: *numberRange.Upper})
+				numQuery = append(numQuery, f.Query{Path: fsName, Operator: "<", Value: *numberRange.Upper})
 			}
 
-			if len(amountQuery) > 0 {
-				query = append(query, amountQuery...)
+			if len(numQuery) > 0 {
+				query = append(query, numQuery...)
 			}
-		} else if ks == "slice" && reflect.Indirect(reflect.ValueOf(x)).Len() > 0 {
-			columnName := getFirestoreName(resultModelType, value.Type().Field(i).Name)
-			q := f.Query{Path: columnName, Operator: "in", Value: x}
-			query = append(query, q)
-		} else {
-			if _, ok := x.(*search.Filter); ks == "bool" || (strings.Contains(ks, "int") && x != 0) || (strings.Contains(ks, "float") && x != 0) || (!ok && ks == "ptr" && field.Pointer() != 0) {
-				v := value.Type().Field(i).Name
-				columnName := getFirestoreName(resultModelType, v)
-				if len(columnName) > 0 {
-					oper := "=="
-					if key, ok := value.Type().Field(i).Tag.Lookup("operator"); ok && len(key) > 0 {
-						oper = key
-					}
-					q := f.Query{Path: columnName, Operator: oper, Value: x}
-					query = append(query, q)
+		} else if numberRange, ok := x.(search.Int64Range); ok {
+			numQuery := make([]f.Query, 0)
+
+			if numberRange.Min != nil {
+				numQuery = append(numQuery, f.Query{Path: fsName, Operator: ">=", Value: *numberRange.Min})
+			} else if numberRange.Lower != nil {
+				numQuery = append(numQuery, f.Query{Path: fsName, Operator: ">", Value: *numberRange.Lower})
+			}
+			if numberRange.Max != nil {
+				numQuery = append(numQuery, f.Query{Path: fsName, Operator: "<=", Value: *numberRange.Max})
+			} else if numberRange.Upper != nil {
+				numQuery = append(numQuery, f.Query{Path: fsName, Operator: "<", Value: *numberRange.Upper})
+			}
+
+			if len(numQuery) > 0 {
+				query = append(query, numQuery...)
+			}
+		} else if numberRange, ok := x.(search.IntRange); ok {
+			numQuery := make([]f.Query, 0)
+
+			if numberRange.Min != nil {
+				numQuery = append(numQuery, f.Query{Path: fsName, Operator: ">=", Value: *numberRange.Min})
+			} else if numberRange.Lower != nil {
+				numQuery = append(numQuery, f.Query{Path: fsName, Operator: ">", Value: *numberRange.Lower})
+			}
+			if numberRange.Max != nil {
+				numQuery = append(numQuery, f.Query{Path: fsName, Operator: "<=", Value: *numberRange.Max})
+			} else if numberRange.Upper != nil {
+				numQuery = append(numQuery, f.Query{Path: fsName, Operator: "<", Value: *numberRange.Upper})
+			}
+
+			if len(numQuery) > 0 {
+				query = append(query, numQuery...)
+			}
+		} else if numberRange, ok := x.(search.Int32Range); ok {
+			numQuery := make([]f.Query, 0)
+
+			if numberRange.Min != nil {
+				numQuery = append(numQuery, f.Query{Path: fsName, Operator: ">=", Value: *numberRange.Min})
+			} else if numberRange.Lower != nil {
+				numQuery = append(numQuery, f.Query{Path: fsName, Operator: ">", Value: *numberRange.Lower})
+			}
+			if numberRange.Max != nil {
+				numQuery = append(numQuery, f.Query{Path: fsName, Operator: "<=", Value: *numberRange.Max})
+			} else if numberRange.Upper != nil {
+				numQuery = append(numQuery, f.Query{Path: fsName, Operator: "<", Value: *numberRange.Upper})
+			}
+
+			if len(numQuery) > 0 {
+				query = append(query, numQuery...)
+			}
+		} else if kind == reflect.Slice {
+			if reflect.Indirect(reflect.ValueOf(x)).Len() > 0 {
+				if operator == "==" {
+					operator = "in"
 				}
+				q := f.Query{Path: fsName, Operator: operator, Value: x}
+				query = append(query, q)
 			}
+		} else {
+			q := f.Query{Path: fsName, Operator: operator, Value: x}
+			query = append(query, q)
 		}
 	}
 	return query, fields
@@ -253,4 +236,11 @@ func getFirestoreName(modelType reflect.Type, fieldName string) string {
 		return tags[0]
 	}
 	return fieldName
+}
+func getFirestore(filterType reflect.Type, i int) string {
+	field := filterType.Field(i)
+	if tag, ok := field.Tag.Lookup("firestore"); ok {
+		return strings.Split(tag, ",")[0]
+	}
+	return ""
 }
