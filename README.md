@@ -20,6 +20,9 @@
 - BatchUpdater
 - BatchWriter
 #### Export Service to export data
+#### Firestore Health Check
+#### Passcode Adapter
+#### Field Loader
 
 ## Installation
 Please make sure to initialize a Go module before installing core-go/firestore:
